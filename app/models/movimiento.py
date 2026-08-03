@@ -1,0 +1,47 @@
+import pymongo
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
+from enum import Enum
+from typing import Optional
+from pydantic import Field, field_serializer
+from beanie import Document
+
+class TipoMovimiento(str, Enum):
+    ENTRADA = "IN"    
+    ENTRADA_PRODUCCION = "IN_PROD"    # Ingreso de producto terminado desde el taller interno
+    SALIDA_VENTA = "OUT_SALE"         # Venta a cliente (genera ingresos y margen)
+    SALIDA_PRODUCCION = "OUT_PROD"    # Consumo interno / Imprenta (es costo de producción, no venta)
+    AJUSTE = "ADJ"
+
+class Movimiento(Document):
+    sku_articulo: str
+    numero_lote: str  
+    usuario: str
+    
+    tipo_movimiento: TipoMovimiento
+    concepto: str 
+    cantidad: float
+    costo_unitario: float = 0.0
+    
+    # --- NUEVO CAMPO: Congela el precio de venta histórico ---
+    precio_venta: Optional[float] = None 
+    
+    fecha_vencimiento: Optional[str] = None 
+    
+    id_referencia: Optional[str] = None 
+    notas: Optional[str] = None
+    
+    fecha_registro: datetime = Field(default_factory=lambda: datetime.now(ZoneInfo("America/La_Paz")))
+
+    @field_serializer("fecha_registro")
+    def a_hora_local(self, dt: datetime) -> str:
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(ZoneInfo("America/La_Paz")).isoformat()
+
+    class Settings:
+        name = "movimientos"
+        indexes = [
+            pymongo.IndexModel([("sku_articulo", pymongo.ASCENDING)]),
+            pymongo.IndexModel([("numero_lote", pymongo.ASCENDING)])
+        ]
