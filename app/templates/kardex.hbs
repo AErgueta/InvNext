@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kardex de Artículo</title>
+    <style>
+        /* Estilos generales para que se vea limpio y profesional */
+        body { 
+            font-family: Arial, sans-serif; 
+            padding: 20px; 
+            color: #333;
+        }
+        
+        /* Contenedor de los filtros y botones */
+        .acciones-kardex { 
+            margin-bottom: 20px; 
+            padding: 15px; 
+            border: 1px solid #ccc; 
+            background-color: #f9f9f9; 
+            display: inline-block; 
+            border-radius: 5px;
+        }
+        
+        .acciones-kardex input, .acciones-kardex button { 
+            margin-right: 10px; 
+            padding: 8px; 
+        }
+        
+        button { 
+            cursor: pointer; 
+            background-color: #007bff; 
+            color: white; 
+            border: none; 
+            border-radius: 4px; 
+            font-weight: bold;
+        }
+        
+        button:disabled { 
+            background-color: #cccccc; 
+            cursor: not-allowed; 
+        }
+
+        /* Estilos de la tabla */
+        table { 
+            width: 100%; 
+            margin-top: 20px; 
+            border-collapse: collapse; 
+            text-align: center; 
+        }
+        
+        th, td { 
+            border: 1px solid #ddd; 
+            padding: 10px; 
+        }
+        
+        th { 
+            background-color: #333; 
+            color: white; 
+        }
+        
+        /* Color cebra para las filas (opcional pero se ve genial) */
+        tbody tr:nth-child(even) { 
+            background-color: #f2f2f2; 
+        }
+    </style>
+</head>
+<body>
+
+<h2>Reporte Kardex Dinámico</h2>
+    
+    <div class="acciones-kardex">
+        <!-- NUEVO: Campo para escribir el SKU -->
+        <label for="input-sku"><strong>SKU del Artículo:</strong></label>
+        <input type="text" id="input-sku" placeholder="Ej. CINTA-EMB" style="width: 150px; margin-right: 20px;">
+
+        <label for="fecha-inicio">Desde:</label>
+        <input type="date" id="fecha-inicio">
+        
+        <label for="fecha-fin">Hasta:</label>
+        <input type="date" id="fecha-fin">
+        
+        <!-- Le quitamos el data-sku fijo a los botones -->
+        <button id="btn-consultar-kardex" style="background-color: #28a745;">
+            🔍 Consultar
+        </button>
+
+        <button id="btn-descargar-kardex">
+            📥 Descargar CSV
+        </button>
+    </div>
+
+    <!-- La tabla donde el JavaScript inyectará los datos -->
+    <table>
+        <thead>
+            <tr>
+                <th>Fecha</th>
+                <th>Concepto</th>
+                <th>Lote</th>
+                <th>Tipo</th>
+                <th>Costo U.</th>
+                <th>Ingreso</th>
+                <th>Egreso</th>
+                <th>Saldo</th>
+            </tr>
+        </thead>
+        <tbody id="cuerpo-tabla-kardex">
+            <tr>
+                <!-- Mensaje por defecto cuando entras a la página -->
+                <td colspan="8" style="padding: 30px; color: #666; font-style: italic;">
+                    Haz clic en "Consultar en Pantalla" para cargar los movimientos.
+                </td>
+            </tr>
+        </tbody>
+    </table>
+
+    <!-- Nuestro script puente que le da vida a los botones -->
+    <script src="/static/js/kardex.js"></script>
+
+</body>
+</html>

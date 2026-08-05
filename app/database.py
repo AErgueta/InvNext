@@ -9,6 +9,7 @@ from app.models.movimiento import Movimiento
 from app.models.lote import Lote
 from app.models.proveedor import Proveedor
 from app.models.orden_compra import OrdenCompra
+from app.models.almacen import Almacen
 
 load_dotenv()
 
@@ -26,8 +27,9 @@ async def init_db():
             Articulo, 
             Movimiento, 
             Lote, 
-            Proveedor,      # <-- Agregado
-            OrdenCompra     # <-- Agregado
+            Proveedor,       # <-- Agregado
+            OrdenCompra,     # <-- Agregado
+            Almacen
         ] 
     )
     print(f"Conexión exitosa a la base de datos: {DATABASE_NAME}")

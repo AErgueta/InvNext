@@ -8,13 +8,21 @@ from beanie import Document
 
 class TipoMovimiento(str, Enum):
     ENTRADA = "IN"    
-    ENTRADA_PRODUCCION = "IN_PROD"    # Ingreso de producto terminado desde el taller interno
-    SALIDA_VENTA = "OUT_SALE"         # Venta a cliente (genera ingresos y margen)
-    SALIDA_PRODUCCION = "OUT_PROD"    # Consumo interno / Imprenta (es costo de producción, no venta)
+    ENTRADA_PRODUCCION = "IN_PROD"    
+    SALIDA_VENTA = "OUT_SALE"         
+    SALIDA_PRODUCCION = "OUT_PROD"    
     AJUSTE = "ADJ"
+    
+    # --- NUEVOS TIPOS PARA MULTI-ALMACÉN ---
+    ENTRADA_TRASPASO = "IN_TRANS"     # Ingreso por traspaso desde otro almacén
+    SALIDA_TRASPASO = "OUT_TRANS"     # Salida por traspaso hacia otro almacén
 
 class Movimiento(Document):
     sku_articulo: str
+    
+    # --- NUEVO CAMPO OBLIGATORIO: ALMACÉN ---
+    codigo_almacen: str 
+    
     numero_lote: str  
     usuario: str
     
@@ -23,10 +31,12 @@ class Movimiento(Document):
     cantidad: float
     costo_unitario: float = 0.0
     
-    # --- NUEVO CAMPO: Congela el precio de venta histórico ---
     precio_venta: Optional[float] = None 
     
     fecha_vencimiento: Optional[str] = None 
+    
+    # --- NUEVO CAMPO OPCIONAL: CONTRA-PARTE DEL TRASPASO ---
+    almacen_contraparte: Optional[str] = None 
     
     id_referencia: Optional[str] = None 
     notas: Optional[str] = None
@@ -43,5 +53,6 @@ class Movimiento(Document):
         name = "movimientos"
         indexes = [
             pymongo.IndexModel([("sku_articulo", pymongo.ASCENDING)]),
+            pymongo.IndexModel([("codigo_almacen", pymongo.ASCENDING)]), # Nuevo índice para búsquedas rápidas por almacén
             pymongo.IndexModel([("numero_lote", pymongo.ASCENDING)])
         ]

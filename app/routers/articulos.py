@@ -3,9 +3,11 @@ from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any
 from datetime import datetime
 from zoneinfo import ZoneInfo
+
 from app.models.articulo import Articulo
 from app.models.movimiento import Movimiento
 from app.models.lote import Lote
+from app.models.almacen import Almacen # --- NUEVA IMPORTACIÓN ---
 
 # Creamos el enrutador con un prefijo para que todas las rutas empiecen con /articulos
 router = APIRouter(
@@ -30,21 +32,32 @@ async def crear_articulo(articulo: Articulo):
     # 3. Retornamos el artículo recién creado
     return articulo
 
+# --- ENDPOINT ACTUALIZADO PARA FRONTEND MULTI-ALMACÉN ---
 @router.get("/", response_model=list[Articulo], status_code=status.HTTP_200_OK)
-async def obtener_articulos():
-    # find_all() busca todos los documentos y to_list() los convierte en una lista de Python
+async def obtener_articulos(codigo_almacen: Optional[str] = None):
+    # Buscamos todos los documentos
     articulos = await Articulo.find_all().to_list()
+    
+    # Si el frontend pide los datos para una sucursal en específico:
+    if codigo_almacen:
+        for art in articulos:
+            # Filtramos la lista interna para que solo viaje el stock de esa sucursal
+            stock_filtrado = [s for s in art.stock_por_almacen if s.codigo_almacen == codigo_almacen]
+            art.stock_por_almacen = stock_filtrado
+            
     return articulos
 
+# --- ENDPOINT ACTUALIZADO ---
 @router.delete("/reset", status_code=status.HTTP_200_OK)
 async def limpiar_base_de_datos():
     """
     ENDPOINT TEMPORAL PARA DESARROLLO:
-    Borra todos los artículos, movimientos y lotes de la base de datos.
+    Borra todos los artículos, movimientos, lotes y almacenes de la base de datos.
     """
     await Articulo.find_all().delete()
     await Movimiento.find_all().delete()
     await Lote.find_all().delete()
+    await Almacen.find_all().delete() # Limpiamos también los almacenes
     
     return {"mensaje": "Base de datos completamente limpia y lista para la nueva arquitectura."}
 
@@ -53,7 +66,7 @@ async def limpiar_base_de_datos():
 async def obtener_valor_inventario(sku: str):
     """
     Calcula el valor financiero total del inventario actual para un artículo,
-    sumando el costo real de los lotes activos.
+    sumando el costo real de los lotes activos a nivel global.
     """
     articulo = await Articulo.find_one(Articulo.sku == sku)
     if not articulo:

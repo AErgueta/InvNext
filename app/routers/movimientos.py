@@ -1,22 +1,54 @@
 # 1. Asegúrate de tener estas importaciones al inicio del archivo:
 from typing import Optional, List
 from fastapi import APIRouter, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
-# 2. Asegúrate de importar tus modelos (incluyendo TipoMovimiento):
+import csv
+import io
+from fastapi import Response
+
+# 2. Asegúrate de importar tus modelos:
 from app.models.movimiento import Movimiento, TipoMovimiento
-from app.models.articulo import Articulo
-from app.models.lote import Lote
+from app.models.articulo import Articulo, StockAlmacen
+from app.models.lote import Lote, StockLoteAlmacen
 
-# 3. Y JUSTO DEBAJO de las importaciones, colocas la clase:
+# 3. Clases de Petición y Respuesta:
 class PeticionSalidaFIFO(BaseModel):
     sku_articulo: str
+    codigo_almacen: str
     usuario: str
     tipo_movimiento: TipoMovimiento
     concepto: str
     cantidad: float
     id_referencia: Optional[str] = None
 
+class PeticionSalida(BaseModel):
+    sku_articulo: str
+    codigo_almacen: str
+    cantidad: float = Field(..., gt=0, description="Cantidad a retirar del almacén")
+    concepto: str = Field(..., description="Ej: Consumo interno, Venta, Merma")
+    usuario: str
+    id_referencia: str | None = None
+
+class PeticionTraspaso(BaseModel):
+    sku_articulo: str
+    codigo_almacen_origen: str
+    codigo_almacen_destino: str
+    numero_lote: str
+    cantidad: float = Field(..., gt=0, description="Cantidad a traspasar")
+    concepto: str = "Traspaso interno"
+    usuario: str
+    id_referencia: str
+
+class RespuestaKardex(BaseModel):
+    sku: str
+    almacen: Optional[str] = None
+    saldo_inicial: float
+    movimientos: list[Movimiento]
+
+# 4. Enrutador:
 router = APIRouter(
     prefix="/movimientos",
     tags=["Movimientos"]
@@ -38,16 +70,17 @@ async def registrar_movimiento(movimiento: Movimiento):
         movimiento.numero_lote = "SIN-LOTE"
         movimiento.fecha_vencimiento = None
 
-    # 2. Lógica matemática y gestión de Lotes
-    if movimiento.tipo_movimiento in [TipoMovimiento.ENTRADA, TipoMovimiento.ENTRADA_PRODUCCION]:
-        # Buscamos si el lote ya existe en el sistema
+    variacion_stock = 0.0
+
+    # 2. Lógica matemática y gestión de Lotes con Almacenes
+    if movimiento.tipo_movimiento in [TipoMovimiento.ENTRADA, TipoMovimiento.ENTRADA_PRODUCCION, TipoMovimiento.ENTRADA_TRASPASO]:
         lote = await Lote.find_one(
             Lote.numero_lote == movimiento.numero_lote,
             Lote.sku_articulo == movimiento.sku_articulo
         )
         
         if lote:
-            # Si el artículo NO controla lotes (Lote Perpetuo), aplicamos Costo Promedio Ponderado
+            # Lógica de costos
             if not articulo.controla_lotes:
                 valor_actual = lote.cantidad_actual * lote.costo_unitario
                 valor_nuevo = movimiento.cantidad * movimiento.costo_unitario
@@ -55,29 +88,34 @@ async def registrar_movimiento(movimiento: Movimiento):
                 nuevo_costo = (valor_actual + valor_nuevo) / nueva_cantidad
                 lote.costo_unitario = round(nuevo_costo, 4)
             else:
-                # Si ya existía y es lote normal, actualizamos al costo más reciente
                 lote.costo_unitario = movimiento.costo_unitario
                 
-            # Simplemente le sumamos la nueva cantidad
             lote.cantidad_actual += movimiento.cantidad
+            
+            # Impactar almacén físico dentro del lote
+            stock_lote_alm = next((sl for sl in lote.stock_por_almacen if sl.codigo_almacen == movimiento.codigo_almacen), None)
+            if stock_lote_alm:
+                stock_lote_alm.cantidad += movimiento.cantidad
+            else:
+                lote.stock_por_almacen.append(StockLoteAlmacen(codigo_almacen=movimiento.codigo_almacen, cantidad=movimiento.cantidad))
+                
             await lote.save()
         else:
-            # Si es un lote nuevo, lo creamos desde cero
             nuevo_lote = Lote(
                 sku_articulo=movimiento.sku_articulo,
                 numero_lote=movimiento.numero_lote,
                 cantidad_inicial=movimiento.cantidad,
                 cantidad_actual=movimiento.cantidad,
                 costo_unitario=movimiento.costo_unitario,
-                fecha_vencimiento=movimiento.fecha_vencimiento
+                fecha_vencimiento=movimiento.fecha_vencimiento,
+                stock_por_almacen=[StockLoteAlmacen(codigo_almacen=movimiento.codigo_almacen, cantidad=movimiento.cantidad)]
             )
             await nuevo_lote.insert()
             
-        # Sumamos al stock global del almacén
         articulo.stock_actual += movimiento.cantidad
+        variacion_stock = movimiento.cantidad
 
-    elif movimiento.tipo_movimiento in [TipoMovimiento.SALIDA_VENTA, TipoMovimiento.SALIDA_PRODUCCION]:
-        # Para sacar inventario, el lote DEBE existir
+    elif movimiento.tipo_movimiento in [TipoMovimiento.SALIDA_VENTA, TipoMovimiento.SALIDA_PRODUCCION, TipoMovimiento.SALIDA_TRASPASO]:
         lote = await Lote.find_one(
             Lote.numero_lote == movimiento.numero_lote,
             Lote.sku_articulo == movimiento.sku_articulo
@@ -89,32 +127,31 @@ async def registrar_movimiento(movimiento: Movimiento):
                 detail=f"El lote '{movimiento.numero_lote}' no está registrado."
             )
             
-        if lote.cantidad_actual < movimiento.cantidad:
+        # Validar que el lote tenga stock en el almacén específico
+        stock_lote_alm = next((sl for sl in lote.stock_por_almacen if sl.codigo_almacen == movimiento.codigo_almacen), None)
+        
+        if not stock_lote_alm or stock_lote_alm.cantidad < movimiento.cantidad:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Stock insuficiente en el lote {movimiento.numero_lote}. Actual: {lote.cantidad_actual}"
+                detail=f"Stock insuficiente en el lote {movimiento.numero_lote} para el almacén {movimiento.codigo_almacen}. Actual: {stock_lote_alm.cantidad if stock_lote_alm else 0}"
             )
             
-        # IMPORTANTE: Congelamos el costo unitario real del lote en el historial del movimiento
         movimiento.costo_unitario = lote.costo_unitario
         
-        # Lógica diferenciada para precios de venta según el tipo de salida
         if movimiento.tipo_movimiento == TipoMovimiento.SALIDA_VENTA:
-            # Si es venta comercial, respetamos precio manual (descuento) o asignamos el oficial
             if movimiento.precio_venta is None:
                 movimiento.precio_venta = articulo.precio_venta
         else:
-            # Si es salida a producción, no hay venta al público ni ingresos comerciales
             movimiento.precio_venta = None
 
-        # Restamos del lote específico y del stock global
         lote.cantidad_actual -= movimiento.cantidad
+        stock_lote_alm.cantidad -= movimiento.cantidad
         await lote.save()
         
         articulo.stock_actual -= movimiento.cantidad
+        variacion_stock = -movimiento.cantidad
 
     elif movimiento.tipo_movimiento == TipoMovimiento.AJUSTE:
-        # El ajuste reemplaza la cantidad física exacta de un lote específico
         lote = await Lote.find_one(
             Lote.numero_lote == movimiento.numero_lote,
             Lote.sku_articulo == movimiento.sku_articulo
@@ -123,53 +160,129 @@ async def registrar_movimiento(movimiento: Movimiento):
         if not lote:
             raise HTTPException(status_code=404, detail="Lote no encontrado para el ajuste.")
             
-        # Calculamos la diferencia para ajustar el stock global correctamente
-        diferencia = movimiento.cantidad - lote.cantidad_actual
+        stock_lote_alm = next((sl for sl in lote.stock_por_almacen if sl.codigo_almacen == movimiento.codigo_almacen), None)
         
-        lote.cantidad_actual = movimiento.cantidad
+        if stock_lote_alm:
+            diferencia = movimiento.cantidad - stock_lote_alm.cantidad
+            stock_lote_alm.cantidad = movimiento.cantidad
+        else:
+            diferencia = movimiento.cantidad
+            lote.stock_por_almacen.append(StockLoteAlmacen(codigo_almacen=movimiento.codigo_almacen, cantidad=movimiento.cantidad))
+            
+        lote.cantidad_actual += diferencia
         await lote.save()
         
         articulo.stock_actual += diferencia
+        variacion_stock = diferencia
 
-    # 3. Guardamos el Artículo y el registro histórico inmutable del Movimiento
+    # 3. Impactar el stock en el almacén específico dentro del Artículo
+    almacen_encontrado = False
+    for stock_alm in articulo.stock_por_almacen:
+        if stock_alm.codigo_almacen == movimiento.codigo_almacen:
+            stock_alm.cantidad += variacion_stock
+            almacen_encontrado = True
+            break
+            
+    if not almacen_encontrado:
+        articulo.stock_por_almacen.append(
+            StockAlmacen(
+                codigo_almacen=movimiento.codigo_almacen, 
+                cantidad=variacion_stock
+            )
+        )
+
+    # 4. Guardamos el Artículo y el registro histórico inmutable del Movimiento
     await articulo.save()
     await movimiento.insert()
     
     return movimiento
 
-@router.get("/", response_model=list[Movimiento], status_code=status.HTTP_200_OK)
-async def obtener_todos_los_movimientos():
-    """
-    Devuelve el historial completo de todos los movimientos registrados.
-    (Ideal para auditorías globales).
-    """
-    # .sort(+Movimiento.fecha_registro) ordena del más antiguo al más reciente
-    movimientos = await Movimiento.find_all().sort(+Movimiento.fecha_registro).to_list()
-    return movimientos
+@router.post("/traspaso", status_code=status.HTTP_201_CREATED)
+async def registrar_traspaso(peticion: PeticionTraspaso):
+    if peticion.codigo_almacen_origen == peticion.codigo_almacen_destino:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, 
+            detail="El almacén de origen y destino deben ser diferentes."
+        )
 
-@router.get("/{sku}", response_model=list[Movimiento], status_code=status.HTTP_200_OK)
-async def obtener_movimientos_por_articulo(sku: str):
-    """
-    Devuelve el Kardex (historial de movimientos) de un artículo específico.
-    """
-    movimientos = await Movimiento.find(
-        Movimiento.sku_articulo == sku
-    ).sort(+Movimiento.fecha_registro).to_list()
-    
-    return movimientos
+    articulo = await Articulo.find_one(Articulo.sku == peticion.sku_articulo)
+    if not articulo:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Artículo no encontrado.")
+
+    lote = await Lote.find_one(Lote.numero_lote == peticion.numero_lote, Lote.sku_articulo == peticion.sku_articulo)
+    if not lote:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lote no encontrado.")
+
+    # 1. Validar existencias del Artículo en el Origen
+    stock_art_origen = next((alm for alm in articulo.stock_por_almacen if alm.codigo_almacen == peticion.codigo_almacen_origen), None)
+    if not stock_art_origen or stock_art_origen.cantidad < peticion.cantidad:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Stock de artículo insuficiente en el origen.")
+
+    # 2. Validar existencias del Lote físico en el Origen
+    stock_lote_origen = next((sl for sl in lote.stock_por_almacen if sl.codigo_almacen == peticion.codigo_almacen_origen), None)
+    if not stock_lote_origen or stock_lote_origen.cantidad < peticion.cantidad:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="El lote no tiene stock físico suficiente en el almacén de origen.")
+
+    # 3. Trasladar en el Artículo
+    stock_art_origen.cantidad -= peticion.cantidad
+    stock_art_destino = next((alm for alm in articulo.stock_por_almacen if alm.codigo_almacen == peticion.codigo_almacen_destino), None)
+    if stock_art_destino:
+        stock_art_destino.cantidad += peticion.cantidad
+    else:
+        articulo.stock_por_almacen.append(StockAlmacen(codigo_almacen=peticion.codigo_almacen_destino, cantidad=peticion.cantidad))
+
+    # 4. Trasladar en el Lote (¡La magia de la ubicación física!)
+    stock_lote_origen.cantidad -= peticion.cantidad
+    stock_lote_destino = next((sl for sl in lote.stock_por_almacen if sl.codigo_almacen == peticion.codigo_almacen_destino), None)
+    if stock_lote_destino:
+        stock_lote_destino.cantidad += peticion.cantidad
+    else:
+        lote.stock_por_almacen.append(StockLoteAlmacen(codigo_almacen=peticion.codigo_almacen_destino, cantidad=peticion.cantidad))
+
+    # 5. Generar Registros Inmutables
+    mov_salida = Movimiento(
+        sku_articulo=articulo.sku,
+        codigo_almacen=peticion.codigo_almacen_origen,
+        almacen_contraparte=peticion.codigo_almacen_destino,
+        numero_lote=peticion.numero_lote,
+        usuario=peticion.usuario,
+        tipo_movimiento=TipoMovimiento.SALIDA_TRASPASO,
+        concepto=peticion.concepto,
+        cantidad=peticion.cantidad,
+        costo_unitario=lote.costo_unitario,
+        id_referencia=peticion.id_referencia
+    )
+
+    mov_entrada = Movimiento(
+        sku_articulo=articulo.sku,
+        codigo_almacen=peticion.codigo_almacen_destino,
+        almacen_contraparte=peticion.codigo_almacen_origen,
+        numero_lote=peticion.numero_lote,
+        usuario=peticion.usuario,
+        tipo_movimiento=TipoMovimiento.ENTRADA_TRASPASO,
+        concepto=peticion.concepto,
+        cantidad=peticion.cantidad,
+        costo_unitario=lote.costo_unitario,
+        id_referencia=peticion.id_referencia
+    )
+
+    await lote.save()
+    await articulo.save()
+    await mov_salida.insert()
+    await mov_entrada.insert()
+
+    return {
+        "mensaje": "Traspaso exitoso",
+        "salida": mov_salida,
+        "entrada": mov_entrada
+    }
 
 @router.post("/salida-automatica", status_code=status.HTTP_201_CREATED)
 async def registrar_salida_fifo(peticion: PeticionSalidaFIFO):
-    """
-    Endpoint para salidas automatizadas (FIFO).
-    Descuenta automáticamente del lote más antiguo disponible.
-    Puede generar múltiples movimientos si la cantidad requiere tomar de varios lotes.
-    """
-    # 1. Validar que el tipo de movimiento sea correcto para una salida
-    if peticion.tipo_movimiento not in [TipoMovimiento.SALIDA_VENTA, TipoMovimiento.SALIDA_PRODUCCION]:
+    if peticion.tipo_movimiento not in [TipoMovimiento.SALIDA_VENTA, TipoMovimiento.SALIDA_PRODUCCION, TipoMovimiento.SALIDA_TRASPASO]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="El tipo de movimiento debe ser una salida (OUT_SALE o OUT_PROD)."
+            detail="El tipo de movimiento debe ser una salida."
         )
         
     if peticion.cantidad <= 0:
@@ -178,7 +291,6 @@ async def registrar_salida_fifo(peticion: PeticionSalidaFIFO):
             detail="La cantidad debe ser mayor a cero."
         )
 
-    # 2. Verificar Artículo y Stock Global
     articulo = await Articulo.find_one(Articulo.sku == peticion.sku_articulo)
     if not articulo:
         raise HTTPException(
@@ -186,61 +298,216 @@ async def registrar_salida_fifo(peticion: PeticionSalidaFIFO):
             detail=f"El artículo con SKU '{peticion.sku_articulo}' no existe."
         )
         
-    if articulo.stock_actual < peticion.cantidad:
+    # Validar si el almacén específico tiene stock global suficiente
+    stock_almacen = next((alm for alm in articulo.stock_por_almacen if alm.codigo_almacen == peticion.codigo_almacen), None)
+    if not stock_almacen or stock_almacen.cantidad < peticion.cantidad:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Stock insuficiente. Solicitado: {peticion.cantidad}, Disponible: {articulo.stock_actual}"
+            detail=f"Stock insuficiente en el almacén {peticion.codigo_almacen}."
         )
         
-    # 3. Obtener lotes con stock, ordenados del más antiguo al más nuevo (+_id)
-    lotes_disponibles = await Lote.find(
+    # Buscar lotes activos y ordenarlos por antigüedad
+    lotes_activos = await Lote.find(
         Lote.sku_articulo == peticion.sku_articulo,
         Lote.cantidad_actual > 0
     ).sort("+_id").to_list()
     
-    cantidad_restante = peticion.cantidad
-    movimientos_generados = []
-    
-    # 4. Bucle FIFO: Consumir lotes en cascada
-    for lote in lotes_disponibles:
-        if cantidad_restante <= 0:
-            break  # Ya cubrimos la cantidad solicitada
+    # Filtrar solo los lotes que FÍSICAMENTE están en la sucursal
+    lotes_validos_en_sucursal = []
+    for l in lotes_activos:
+        s_alm = next((sl for sl in l.stock_por_almacen if sl.codigo_almacen == peticion.codigo_almacen), None)
+        if s_alm and s_alm.cantidad > 0:
+            lotes_validos_en_sucursal.append((l, s_alm))
             
-        # Determinamos cuánto podemos tomar de este lote específico
-        cantidad_a_tomar = min(lote.cantidad_actual, cantidad_restante)
+    cantidad_restante = peticion.cantidad
+    movimientos_a_guardar = []
+    lotes_a_guardar = []
+    
+    for lote, stock_lote_alm in lotes_validos_en_sucursal:
+        if cantidad_restante <= 0:
+            break
+            
+        cantidad_a_tomar = min(stock_lote_alm.cantidad, cantidad_restante)
         
-        # Descontamos del lote y guardamos
         lote.cantidad_actual -= cantidad_a_tomar
-        await lote.save()
+        stock_lote_alm.cantidad -= cantidad_a_tomar
+        lotes_a_guardar.append(lote) 
         
-        # Definimos el precio de venta (solo aplica si es OUT_SALE)
         precio_v = articulo.precio_venta if peticion.tipo_movimiento == TipoMovimiento.SALIDA_VENTA else None
         
-        # Creamos el registro del movimiento para este lote en particular
         nuevo_movimiento = Movimiento(
             sku_articulo=articulo.sku,
+            codigo_almacen=peticion.codigo_almacen,
             numero_lote=lote.numero_lote,
             usuario=peticion.usuario,
             tipo_movimiento=peticion.tipo_movimiento,
             concepto=peticion.concepto,
             cantidad=cantidad_a_tomar,
-            costo_unitario=lote.costo_unitario, # El costo se respeta según el lote
+            costo_unitario=lote.costo_unitario, 
             precio_venta=precio_v,
             id_referencia=peticion.id_referencia
         )
         
-        await nuevo_movimiento.insert()
-        movimientos_generados.append(nuevo_movimiento)
-        
-        # Restamos lo que acabamos de tomar a nuestra meta
+        movimientos_a_guardar.append(nuevo_movimiento) 
         cantidad_restante -= cantidad_a_tomar
         
-    # 5. Actualizar el stock global del artículo
     articulo.stock_actual -= peticion.cantidad
+    stock_almacen.cantidad -= peticion.cantidad
+    
+    for lote in lotes_a_guardar:
+        await lote.save()
+        
+    for mov in movimientos_a_guardar:
+        await mov.insert()
+        
     await articulo.save()
     
     return {
-        "mensaje": f"Salida automática completada. Se solicitó {peticion.cantidad} y se descontó correctamente.",
-        "lotes_afectados": len(movimientos_generados),
-        "movimientos_generados": movimientos_generados
+        "mensaje": f"Salida automática completada. Se descontó correctamente.",
+        "lotes_afectados": len(movimientos_a_guardar),
+        "movimientos_generados": movimientos_a_guardar
     }
+
+@router.get("/", response_model=list[Movimiento], status_code=status.HTTP_200_OK)
+async def obtener_todos_los_movimientos(codigo_almacen: Optional[str] = None):
+    filtros = []
+    if codigo_almacen:
+        filtros.append(Movimiento.codigo_almacen == codigo_almacen)
+        
+    movimientos = await Movimiento.find(*filtros).sort(+Movimiento.fecha_registro).to_list()
+    return movimientos
+
+@router.get("/{sku}", response_model=RespuestaKardex, status_code=status.HTTP_200_OK)
+async def obtener_movimientos_por_articulo(
+    sku: str, 
+    codigo_almacen: Optional[str] = None, 
+    fecha_inicio: Optional[datetime] = None, 
+    fecha_fin: Optional[datetime] = None
+):
+    tz_local = ZoneInfo("America/La_Paz")
+    
+    if fecha_inicio and fecha_inicio.tzinfo is None:
+        fecha_inicio = fecha_inicio.replace(tzinfo=tz_local)
+    if fecha_fin and fecha_fin.tzinfo is None:
+        fecha_fin = fecha_fin.replace(tzinfo=tz_local)
+
+    saldo_inicial = 0.0
+    
+    filtros_hist = [Movimiento.sku_articulo == sku]
+    if codigo_almacen:
+        filtros_hist.append(Movimiento.codigo_almacen == codigo_almacen)
+        
+    if fecha_inicio:
+        filtros_hist.append(Movimiento.fecha_registro < fecha_inicio)
+        movimientos_previos = await Movimiento.find(*filtros_hist).to_list()
+        
+        for mov in movimientos_previos:
+            if mov.tipo_movimiento in [TipoMovimiento.ENTRADA, TipoMovimiento.ENTRADA_PRODUCCION, TipoMovimiento.ENTRADA_TRASPASO]:
+                saldo_inicial += mov.cantidad
+            elif mov.tipo_movimiento in [TipoMovimiento.SALIDA_VENTA, TipoMovimiento.SALIDA_PRODUCCION, TipoMovimiento.SALIDA_TRASPASO]:
+                saldo_inicial -= mov.cantidad
+
+    filtros_periodo = [Movimiento.sku_articulo == sku]
+    if codigo_almacen:
+        filtros_periodo.append(Movimiento.codigo_almacen == codigo_almacen)
+    if fecha_inicio:
+        filtros_periodo.append(Movimiento.fecha_registro >= fecha_inicio)
+    if fecha_fin:
+        filtros_periodo.append(Movimiento.fecha_registro <= fecha_fin)
+        
+    movimientos_periodo = await Movimiento.find(*filtros_periodo).sort(+Movimiento.fecha_registro).to_list()
+    
+    return RespuestaKardex(
+        sku=sku,
+        almacen=codigo_almacen or "TODOS",
+        saldo_inicial=saldo_inicial,
+        movimientos=movimientos_periodo
+    )
+
+@router.get("/{sku}/exportar", status_code=status.HTTP_200_OK)
+async def exportar_kardex_csv(
+    sku: str, 
+    codigo_almacen: Optional[str] = None,
+    fecha_inicio: Optional[datetime] = None, 
+    fecha_fin: Optional[datetime] = None
+):
+    tz_local = ZoneInfo("America/La_Paz")
+    
+    if fecha_inicio and fecha_inicio.tzinfo is None:
+        fecha_inicio = fecha_inicio.replace(tzinfo=tz_local)
+    if fecha_fin and fecha_fin.tzinfo is None:
+        fecha_fin = fecha_fin.replace(tzinfo=tz_local)
+
+    saldo_inicial = 0.0
+    
+    filtros_hist = [Movimiento.sku_articulo == sku]
+    if codigo_almacen:
+        filtros_hist.append(Movimiento.codigo_almacen == codigo_almacen)
+        
+    if fecha_inicio:
+        filtros_hist.append(Movimiento.fecha_registro < fecha_inicio)
+        movimientos_previos = await Movimiento.find(*filtros_hist).to_list()
+        
+        for mov in movimientos_previos:
+            if mov.tipo_movimiento in [TipoMovimiento.ENTRADA, TipoMovimiento.ENTRADA_PRODUCCION, TipoMovimiento.ENTRADA_TRASPASO]:
+                saldo_inicial += mov.cantidad
+            elif mov.tipo_movimiento in [TipoMovimiento.SALIDA_VENTA, TipoMovimiento.SALIDA_PRODUCCION, TipoMovimiento.SALIDA_TRASPASO]:
+                saldo_inicial -= mov.cantidad
+
+    filtros_periodo = [Movimiento.sku_articulo == sku]
+    if codigo_almacen:
+        filtros_periodo.append(Movimiento.codigo_almacen == codigo_almacen)
+    if fecha_inicio:
+        filtros_periodo.append(Movimiento.fecha_registro >= fecha_inicio)
+    if fecha_fin:
+        filtros_periodo.append(Movimiento.fecha_registro <= fecha_fin)
+        
+    movimientos_periodo = await Movimiento.find(*filtros_periodo).sort(+Movimiento.fecha_registro).to_list()
+
+    output = io.StringIO()
+    writer = csv.writer(output, delimiter=",")
+    
+    writer.writerow([
+        "Fecha", "Almacén", "Concepto", "Lote", "Tipo Movimiento", 
+        "Costo Unitario", "Ingreso", "Egreso", "Saldo"
+    ])
+    
+    writer.writerow([
+        fecha_inicio.strftime("%Y-%m-%d %H:%M") if fecha_inicio else "-", 
+        codigo_almacen or "TODOS", "SALDO INICIAL", "-", "-", "-", "-", "-", saldo_inicial
+    ])
+    
+    saldo_actual = saldo_inicial
+    for mov in movimientos_periodo:
+        ingreso = 0
+        egreso = 0
+        
+        if mov.tipo_movimiento in [TipoMovimiento.ENTRADA, TipoMovimiento.ENTRADA_PRODUCCION, TipoMovimiento.ENTRADA_TRASPASO]:
+            ingreso = mov.cantidad
+            saldo_actual += mov.cantidad
+        elif mov.tipo_movimiento in [TipoMovimiento.SALIDA_VENTA, TipoMovimiento.SALIDA_PRODUCCION, TipoMovimiento.SALIDA_TRASPASO]:
+            egreso = mov.cantidad
+            saldo_actual -= mov.cantidad
+            
+        fecha_str = mov.fecha_registro.astimezone(tz_local).strftime("%Y-%m-%d %H:%M")
+        
+        writer.writerow([
+            fecha_str,
+            mov.codigo_almacen,
+            mov.concepto,
+            mov.numero_lote,
+            mov.tipo_movimiento.value, 
+            mov.costo_unitario,
+            ingreso,
+            egreso,
+            saldo_actual
+        ])
+        
+    csv_content = output.getvalue()
+    
+    sufijo_archivo = f"_{codigo_almacen}" if codigo_almacen else "_global"
+    return Response(
+        content=csv_content.encode('utf-8-sig'),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=kardex_{sku}{sufijo_archivo}.csv"}
+    )
