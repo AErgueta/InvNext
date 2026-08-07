@@ -3,17 +3,15 @@ from typing import List, Optional
 from beanie import Document
 from pydantic import BaseModel, Field
 from enum import Enum
-from datetime import datetime, timezone
+from datetime import datetime
 from zoneinfo import ZoneInfo
 
-# --- ESTADO FÍSICO (ALMACÉN) ---
 class EstadoOrden(str, Enum):
-    PENDIENTE = "PENDIENTE"   # Esperando la mercancía
-    RECEPCION_PARCIAL = "RECEPCION_PARCIAL"  # <--- ¡NUEVO ESTADO!
-    COMPLETADA = "COMPLETADA" # La mercancía ingresó al almacén
-    CANCELADA = "CANCELADA"   # Se anuló el pedido
+    PENDIENTE = "PENDIENTE"
+    RECEPCION_PARCIAL = "RECEPCION_PARCIAL"
+    COMPLETADA = "COMPLETADA"
+    CANCELADA = "CANCELADA"
 
-# --- ESTADO FINANCIERO (CUENTAS POR PAGAR) ---
 class EstadoPago(str, Enum):
     NO_PAGADO = "NO_PAGADO"
     PAGO_PARCIAL = "PAGO_PARCIAL"
@@ -22,20 +20,23 @@ class EstadoPago(str, Enum):
 class ItemOrden(BaseModel):
     sku_articulo: str
     cantidad_solicitada: float
-    cantidad_recibida: float = 0.0  # <--- ¡NUEVA VARIABLE! (Empieza en 0)
+    cantidad_recibida: float = 0.0
     costo_unitario_estimado: float
 
 class OrdenCompra(Document):
     numero_orden: str
     proveedor_id: str  
     
-    # Separamos los flujos
+    # --- NUEVOS CAMPOS DE TRAZABILIDAD ---
+    usuario_creador: str  # Quién hizo la orden
+    usuario_ultimo_receptor: Optional[str] = None  # Quién recibió (última vez)
+    usuario_ultimo_pagador: Optional[str] = None   # Quién pagó (última vez)
+    
     estado: EstadoOrden = EstadoOrden.PENDIENTE
     estado_pago: EstadoPago = EstadoPago.NO_PAGADO
     
-    # Control de pagos
-    monto_total: float = 0.0       # Lo que suma la orden
-    monto_pagado: float = 0.0      # Lo que ya le transferimos al proveedor
+    monto_total: float = 0.0       
+    monto_pagado: float = 0.0      
     
     items: List[ItemOrden]
     notas: Optional[str] = None

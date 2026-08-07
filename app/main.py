@@ -5,7 +5,7 @@ from fastapi.templating import Jinja2Templates
 from app.database import init_db
 
 # Importamos nuestros enrutadores
-from app.routers import articulos, movimientos, lotes, reportes, proveedores, ordenes_compra, almacenes
+from app.routers import articulos, movimientos, lotes, reportes, proveedores, ordenes_compra, almacenes, auth
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -55,3 +55,4 @@ app.include_router(reportes.router)
 app.include_router(proveedores.router)
 app.include_router(ordenes_compra.router)
 app.include_router(almacenes.router)
+app.include_router(auth.router)

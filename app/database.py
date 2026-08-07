@@ -10,6 +10,7 @@ from app.models.lote import Lote
 from app.models.proveedor import Proveedor
 from app.models.orden_compra import OrdenCompra
 from app.models.almacen import Almacen
+from app.models.usuario import Usuario
 
 load_dotenv()
 
@@ -29,7 +30,8 @@ async def init_db():
             Lote, 
             Proveedor,       # <-- Agregado
             OrdenCompra,     # <-- Agregado
-            Almacen
+            Almacen,
+            Usuario
         ] 
     )
     print(f"Conexión exitosa a la base de datos: {DATABASE_NAME}")

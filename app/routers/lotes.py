@@ -1,9 +1,11 @@
-from fastapi import APIRouter, status
+from fastapi import APIRouter, status, Depends
 from app.models.lote import Lote
+from app.routers.auth import obtener_usuario_actual
 
 router = APIRouter(
     prefix="/lotes",
-    tags=["Lotes"]
+    tags=["Lotes"],
+    dependencies=[Depends(obtener_usuario_actual)]
 )
 
 @router.get("/", response_model=list[Lote], status_code=status.HTTP_200_OK)

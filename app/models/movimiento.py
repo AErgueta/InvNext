@@ -17,6 +17,9 @@ class TipoMovimiento(str, Enum):
     ENTRADA_TRASPASO = "IN_TRANS"     # Ingreso por traspaso desde otro almacén
     SALIDA_TRASPASO = "OUT_TRANS"     # Salida por traspaso hacia otro almacén
 
+    # --- NUEVO TIPO PARA AJUSTE FINANCIERO ---
+    REVALORIZACION = "ADJ_COST"       # Ajuste exclusivo de costo (cantidad 0)
+
 class Movimiento(Document):
     sku_articulo: str
     

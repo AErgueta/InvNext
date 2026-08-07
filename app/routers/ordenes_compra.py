@@ -1,47 +1,69 @@
-from fastapi import APIRouter, status, HTTPException
-from typing import List
+from fastapi import APIRouter, status, HTTPException, Depends
+from typing import List, Optional
 from pydantic import BaseModel, Field
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+# 1. Importamos el guardia de seguridad
+from app.routers.auth import obtener_usuario_actual
+
 # Importamos nuestros modelos
-from app.models.orden_compra import OrdenCompra, EstadoOrden, EstadoPago
-from app.models.articulo import Articulo
+from app.models.orden_compra import OrdenCompra, EstadoOrden, EstadoPago, ItemOrden
+from app.models.articulo import Articulo, StockAlmacen
 from app.models.movimiento import Movimiento, TipoMovimiento
-from app.models.lote import Lote
+from app.models.lote import Lote, StockLoteAlmacen
 
 router = APIRouter(
     prefix="/ordenes-compra",
     tags=["Órdenes de Compra"]
 )
 
-# --- CLASES PARA LA RECEPCIÓN ---
+# --- CLASES DE PETICIÓN (Limpias de usuarios "en duro") ---
+
+class PeticionNuevaOrden(BaseModel):
+    numero_orden: str
+    proveedor_id: str
+    items: List[ItemOrden]
+    notas: Optional[str] = None
+
 class ItemRecepcion(BaseModel):
     sku_articulo: str
     cantidad_a_recibir: float
 
 class PeticionRecepcion(BaseModel):
-    usuario: str
-    id_referencia: str  # Número de factura o remito
+    codigo_almacen: str  # <--- Agregado para saber en qué sucursal ingresa la mercancía
+    id_referencia: str  
     items_recibidos: List[ItemRecepcion]
 
 class PeticionPago(BaseModel):
-    # gt=0 significa "Greater Than" (Mayor que) 0
     monto: float = Field(..., gt=0, description="El pago debe ser estrictamente mayor a 0")
-    metodo_pago: str  # Ej: "Transferencia", "Efectivo", "Cheque"
-    referencia: str   # Ej: Número de comprobante o voucher
+    metodo_pago: str  
+    referencia: str   
 
 
-# --- ENDPOINTS BÁSICOS ---
+# --- ENDPOINTS BLINDADOS CON DEPENDS ---
+
 @router.post("/", response_model=OrdenCompra, status_code=status.HTTP_201_CREATED)
-async def crear_orden_compra(orden: OrdenCompra):
+async def crear_orden_compra(
+    peticion: PeticionNuevaOrden,
+    usuario_actual = Depends(obtener_usuario_actual)
+):
     """Crea una nueva Orden de Compra y calcula su total."""
-    if not orden.items:
+    if not peticion.items:
         raise HTTPException(status_code=400, detail="La orden debe tener al menos un artículo.")
 
     # Cálculo automático del total financiero
-    monto_calculado = sum(item.cantidad_solicitada * item.costo_unitario_estimado for item in orden.items)
-    orden.monto_total = monto_calculado
+    monto_calculado = sum(item.cantidad_solicitada * item.costo_unitario_estimado for item in peticion.items)
+    
+    # Instanciamos el modelo de Base de Datos inyectando al usuario real
+    orden = OrdenCompra(
+        numero_orden=peticion.numero_orden,
+        proveedor_id=peticion.proveedor_id,
+        items=peticion.items,
+        notas=peticion.notas,
+        monto_total=monto_calculado,
+        usuario_creador=usuario_actual.username
+    )
     
     try:
         await orden.insert()
@@ -56,10 +78,13 @@ async def listar_ordenes():
     return await OrdenCompra.find_all().sort("-fecha_emision").to_list()
 
 
-# --- EL ENDPOINT INTELIGENTE DE RECEPCIÓN ---
 @router.post("/{numero_orden}/recibir", status_code=status.HTTP_200_OK)
-async def recibir_orden(numero_orden: str, peticion: PeticionRecepcion):
-    """Recibe mercancía de una orden, soportando entregas parciales."""
+async def recibir_orden(
+    numero_orden: str, 
+    peticion: PeticionRecepcion,
+    usuario_actual = Depends(obtener_usuario_actual)
+):
+    """Recibe mercancía de una orden, soportando entregas parciales y asignación física a almacenes."""
     orden = await OrdenCompra.find_one(OrdenCompra.numero_orden == numero_orden)
     if not orden:
         raise HTTPException(status_code=404, detail="Orden no encontrada.")
@@ -69,9 +94,7 @@ async def recibir_orden(numero_orden: str, peticion: PeticionRecepcion):
 
     movimientos_generados = []
 
-    # 1. Procesamos lo que viene en el camión
     for item_recibido in peticion.items_recibidos:
-        # Buscamos este artículo dentro de la orden original
         item_orden = next((i for i in orden.items if i.sku_articulo == item_recibido.sku_articulo), None)
         
         if not item_orden:
@@ -84,11 +107,10 @@ async def recibir_orden(numero_orden: str, peticion: PeticionRecepcion):
         if not articulo:
             continue
 
-        # 2. Gestión de Lotes (Dinámicos vs Perpetuos)
         numero_lote = None
         
+        # 1. Gestión de Lotes y Asignación de Stock Físico
         if articulo.controla_lotes:
-            # LOTE DINÁMICO: Uno nuevo por cada recepción
             timestamp = datetime.now(ZoneInfo("America/La_Paz")).strftime("%d%H%M")
             numero_lote = f"L-OC-{numero_orden}-{timestamp}"
             
@@ -97,39 +119,53 @@ async def recibir_orden(numero_orden: str, peticion: PeticionRecepcion):
                 numero_lote=numero_lote,
                 cantidad_inicial=item_recibido.cantidad_a_recibir,
                 cantidad_actual=item_recibido.cantidad_a_recibir,
-                costo_unitario=item_orden.costo_unitario_estimado
+                costo_unitario=item_orden.costo_unitario_estimado,
+                stock_por_almacen=[StockLoteAlmacen(codigo_almacen=peticion.codigo_almacen, cantidad=item_recibido.cantidad_a_recibir)]
             )
             await nuevo_lote.insert()
         else:
-            # LOTE PERPETUO: Acumulamos en un solo lote maestro
             numero_lote = f"PERPETUO-{item_recibido.sku_articulo}"
             lote_existente = await Lote.find_one(Lote.numero_lote == numero_lote)
             
             if lote_existente:
-                # Si ya existe, le sumamos el nuevo ingreso al stock del lote
                 lote_existente.cantidad_inicial += item_recibido.cantidad_a_recibir
                 lote_existente.cantidad_actual += item_recibido.cantidad_a_recibir
+                
+                stock_lote_alm = next((sl for sl in lote_existente.stock_por_almacen if sl.codigo_almacen == peticion.codigo_almacen), None)
+                if stock_lote_alm:
+                    stock_lote_alm.cantidad += item_recibido.cantidad_a_recibir
+                else:
+                    lote_existente.stock_por_almacen.append(StockLoteAlmacen(codigo_almacen=peticion.codigo_almacen, cantidad=item_recibido.cantidad_a_recibir))
+                    
                 await lote_existente.save()
             else:
-                # Si es el primer ingreso histórico de este artículo, lo creamos
                 nuevo_lote_perpetuo = Lote(
                     sku_articulo=item_recibido.sku_articulo,
                     numero_lote=numero_lote,
                     cantidad_inicial=item_recibido.cantidad_a_recibir,
                     cantidad_actual=item_recibido.cantidad_a_recibir,
-                    costo_unitario=item_orden.costo_unitario_estimado
+                    costo_unitario=item_orden.costo_unitario_estimado,
+                    stock_por_almacen=[StockLoteAlmacen(codigo_almacen=peticion.codigo_almacen, cantidad=item_recibido.cantidad_a_recibir)]
                 )
                 await nuevo_lote_perpetuo.insert()
 
-        # 3. Actualizamos stock global
+        # 2. Actualizamos stock global y físico del artículo
         articulo.stock_actual += item_recibido.cantidad_a_recibir
+        
+        almacen_art = next((a for a in articulo.stock_por_almacen if a.codigo_almacen == peticion.codigo_almacen), None)
+        if almacen_art:
+            almacen_art.cantidad += item_recibido.cantidad_a_recibir
+        else:
+            articulo.stock_por_almacen.append(StockAlmacen(codigo_almacen=peticion.codigo_almacen, cantidad=item_recibido.cantidad_a_recibir))
+            
         await articulo.save()
 
-        # 4. Registramos el movimiento (IN) en el Kardex
+        # 3. Registramos el movimiento (IN) en el Kardex
         nuevo_movimiento = Movimiento(
             sku_articulo=item_recibido.sku_articulo,
+            codigo_almacen=peticion.codigo_almacen, # <--- Se asigna el almacén de la petición
             numero_lote=numero_lote,
-            usuario=peticion.usuario,
+            usuario=usuario_actual.username,
             tipo_movimiento=TipoMovimiento.ENTRADA,
             concepto=f"Recepción de OC {numero_orden}",
             cantidad=item_recibido.cantidad_a_recibir,
@@ -139,10 +175,8 @@ async def recibir_orden(numero_orden: str, peticion: PeticionRecepcion):
         await nuevo_movimiento.insert()
         movimientos_generados.append(nuevo_movimiento)
 
-        # 5. "Memoria": Sumamos lo que acaba de llegar a la orden
         item_orden.cantidad_recibida += item_recibido.cantidad_a_recibir
 
-    # 6. Lógica inteligente para cambiar el estado de la Orden
     todas_completadas = all(i.cantidad_recibida >= i.cantidad_solicitada for i in orden.items)
     
     if todas_completadas:
@@ -150,24 +184,29 @@ async def recibir_orden(numero_orden: str, peticion: PeticionRecepcion):
     else:
         orden.estado = EstadoOrden.RECEPCION_PARCIAL
 
+    # Sellamos la orden con el usuario que la recibió
+    orden.usuario_ultimo_receptor = usuario_actual.username
+    orden.fecha_actualizacion = datetime.now(ZoneInfo("America/La_Paz"))
+
     await orden.save()
 
     return {
         "mensaje": "Recepción procesada correctamente",
         "estado_actual_orden": orden.estado,
+        "usuario_recepcion": orden.usuario_ultimo_receptor,
         "movimientos_creados": len(movimientos_generados)
     }
 
 
 @router.post("/{numero_orden}/pagar", status_code=status.HTTP_200_OK)
-async def registrar_pago(numero_orden: str, peticion: PeticionPago):
+async def registrar_pago(
+    numero_orden: str, 
+    peticion: PeticionPago,
+    usuario_actual = Depends(obtener_usuario_actual)
+):
     """
-    Registra un pago a cuenta para una Orden de Compra:
-    1. Suma el monto pagado.
-    2. Valida que no se pague más del total.
-    3. Cambia el estado financiero (PAGO_PARCIAL o PAGADO).
+    Registra un pago a cuenta para una Orden de Compra.
     """
-    # 1. Buscamos la orden
     orden = await OrdenCompra.find_one(OrdenCompra.numero_orden == numero_orden)
     if not orden:
         raise HTTPException(status_code=404, detail="Orden no encontrada.")
@@ -175,7 +214,6 @@ async def registrar_pago(numero_orden: str, peticion: PeticionPago):
     if orden.estado_pago == EstadoPago.PAGADO:
         raise HTTPException(status_code=400, detail="Esta orden ya se encuentra totalmente pagada.")
 
-    # 2. Protección contra errores de tipeo (sobrepago)
     saldo_pendiente = orden.monto_total - orden.monto_pagado
     if peticion.monto > saldo_pendiente:
         raise HTTPException(
@@ -183,21 +221,23 @@ async def registrar_pago(numero_orden: str, peticion: PeticionPago):
             detail=f"El pago excede la deuda. Saldo pendiente actual: {saldo_pendiente}"
         )
 
-    # 3. Sumamos el dinero a la orden
     orden.monto_pagado += peticion.monto
 
-    # 4. Lógica inteligente para el estado financiero
     if orden.monto_pagado >= orden.monto_total:
         orden.estado_pago = EstadoPago.PAGADO
     else:
         orden.estado_pago = EstadoPago.PAGO_PARCIAL
 
+    # Sellamos la orden con el usuario que ejecutó el pago
+    orden.usuario_ultimo_pagador = usuario_actual.username
+    orden.fecha_actualizacion = datetime.now(ZoneInfo("America/La_Paz"))
+
     await orden.save()
 
-    # Devolvemos un resumen financiero súper claro
     return {
         "mensaje": "Pago registrado con éxito",
         "estado_pago_actual": orden.estado_pago,
+        "usuario_pago": orden.usuario_ultimo_pagador,
         "resumen_financiero": {
             "monto_total": orden.monto_total,
             "total_pagado": orden.monto_pagado,
