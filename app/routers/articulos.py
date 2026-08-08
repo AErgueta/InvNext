@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 from app.models.articulo import Articulo
 from app.models.movimiento import Movimiento
 from app.models.lote import Lote
-from app.models.almacen import Almacen # --- NUEVA IMPORTACIÓN ---
+from app.models.almacen import Almacen 
 from app.routers.auth import obtener_usuario_actual
 from app.models.usuario import RolUsuario
 

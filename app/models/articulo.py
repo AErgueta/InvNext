@@ -25,6 +25,7 @@ class Articulo(Document):
     
     # --- CAMPOS ORIGINALES CONSERVADOS ---
     stock_minimo: float = 0.0
+    punto_reorden: float = 0.0  # <--- NUEVO CAMPO PARA ALERTAS DE REABASTECIMIENTO
     precio_venta: float = 0.0 
     controla_lotes: bool = True 
     metadatos: Dict[str, Any] = Field(default_factory=dict)

@@ -22,7 +22,7 @@
             border-radius: 5px;
         }
         
-        .acciones-kardex input, .acciones-kardex button { 
+        .acciones-kardex input, .acciones-kardex select, .acciones-kardex button { 
             margin-right: 10px; 
             padding: 8px; 
         }
@@ -70,9 +70,16 @@
 <h2>Reporte Kardex Dinámico</h2>
     
     <div class="acciones-kardex">
-        <!-- NUEVO: Campo para escribir el SKU -->
         <label for="input-sku"><strong>SKU del Artículo:</strong></label>
         <input type="text" id="input-sku" placeholder="Ej. CINTA-EMB" style="width: 150px; margin-right: 20px;">
+
+        <!-- NUEVO: Selector de Almacén -->
+        <label for="filtro_almacen">Almacén:</label>
+        <select id="filtro_almacen">
+            <option value="">TODOS (Global)</option>
+            <option value="ALM-CENTRAL">ALM-CENTRAL</option>
+            <option value="SUC-01">SUC-01</option>
+        </select>
 
         <label for="fecha-inicio">Desde:</label>
         <input type="date" id="fecha-inicio">
@@ -80,7 +87,6 @@
         <label for="fecha-fin">Hasta:</label>
         <input type="date" id="fecha-fin">
         
-        <!-- Le quitamos el data-sku fijo a los botones -->
         <button id="btn-consultar-kardex" style="background-color: #28a745;">
             🔍 Consultar
         </button>
@@ -101,13 +107,14 @@
                 <th>Costo U.</th>
                 <th>Ingreso</th>
                 <th>Egreso</th>
-                <th>Saldo</th>
+                <th>Saldo (Físico)</th>
+                <th>Saldo (Valor)</th> <!-- NUEVA COLUMNA -->
             </tr>
         </thead>
         <tbody id="cuerpo-tabla-kardex">
             <tr>
-                <!-- Mensaje por defecto cuando entras a la página -->
-                <td colspan="8" style="padding: 30px; color: #666; font-style: italic;">
+                <!-- Aumentamos el colspan a 9 para que ocupe todo el ancho -->
+                <td colspan="9" style="padding: 30px; color: #666; font-style: italic;">
                     Haz clic en "Consultar en Pantalla" para cargar los movimientos.
                 </td>
             </tr>

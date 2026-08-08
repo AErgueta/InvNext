@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from fastapi.responses import HTMLResponse
 from app.database import init_db
 
 # Importamos nuestros enrutadores
@@ -44,6 +45,18 @@ async def ver_pantalla_kardex(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="kardex.hbs", 
+        context={"request": request}
+    )
+
+# 4. Ruta para renderizar la vista del Radar de Alertas de Stock
+@app.get("/alertas-view", tags=["Vistas"])
+async def ver_pantalla_alertas(request: Request):
+    """
+    Renderiza la interfaz de usuario del panel de alertas basada en Handlebars/Jinja2.
+    """
+    return templates.TemplateResponse(
+        request=request,
+        name="alertas.hbs", 
         context={"request": request}
     )
 

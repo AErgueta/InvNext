@@ -500,6 +500,7 @@ async def exportar_kardex_csv(
         movimientos_previos = await Movimiento.find(*filtros_hist).to_list()
         
         for mov in movimientos_previos:
+            # Incluimos IN_TRANS en el cálculo histórico previo
             if mov.tipo_movimiento in [TipoMovimiento.ENTRADA, TipoMovimiento.ENTRADA_PRODUCCION, TipoMovimiento.ENTRADA_TRASPASO]:
                 saldo_inicial += mov.cantidad
             elif mov.tipo_movimiento in [TipoMovimiento.SALIDA_VENTA, TipoMovimiento.SALIDA_PRODUCCION, TipoMovimiento.SALIDA_TRASPASO]:
@@ -518,14 +519,17 @@ async def exportar_kardex_csv(
     output = io.StringIO()
     writer = csv.writer(output, delimiter=",")
     
+    # 1. Agregamos la columna "Saldo Valor" en las cabeceras del CSV
     writer.writerow([
         "Fecha", "Almacén", "Concepto", "Lote", "Tipo Movimiento", 
-        "Costo Unitario", "Ingreso", "Egreso", "Saldo"
+        "Costo Unitario", "Ingreso", "Egreso", "Saldo Físico", "Saldo Valor"
     ])
     
+    # Fila de Saldo Inicial (con su valor inicial en dinero si aplica)
+    valor_inicial_dinero = "$0.00" if saldo_inicial == 0 else "-"
     writer.writerow([
         fecha_inicio.strftime("%Y-%m-%d %H:%M") if fecha_inicio else "-", 
-        codigo_almacen or "TODOS", "SALDO INICIAL", "-", "-", "-", "-", "-", saldo_inicial
+        codigo_almacen or "TODOS", "SALDO INICIAL", "-", "-", "-", "-", "-", saldo_inicial, valor_inicial_dinero
     ])
     
     saldo_actual = saldo_inicial
@@ -533,12 +537,16 @@ async def exportar_kardex_csv(
         ingreso = 0
         egreso = 0
         
+        # Alineado con los tipos que maneja tu frontend
         if mov.tipo_movimiento in [TipoMovimiento.ENTRADA, TipoMovimiento.ENTRADA_PRODUCCION, TipoMovimiento.ENTRADA_TRASPASO]:
             ingreso = mov.cantidad
             saldo_actual += mov.cantidad
         elif mov.tipo_movimiento in [TipoMovimiento.SALIDA_VENTA, TipoMovimiento.SALIDA_PRODUCCION, TipoMovimiento.SALIDA_TRASPASO]:
             egreso = mov.cantidad
             saldo_actual -= mov.cantidad
+            
+        # 2. Calculamos el saldo en dinero multiplicando el saldo físico actual por el costo unitario del movimiento
+        saldo_valor = saldo_actual * mov.costo_unitario
             
         fecha_str = mov.fecha_registro.astimezone(tz_local).strftime("%Y-%m-%d %H:%M")
         
@@ -551,7 +559,8 @@ async def exportar_kardex_csv(
             mov.costo_unitario,
             ingreso,
             egreso,
-            saldo_actual
+            saldo_actual,
+            round(saldo_valor, 2) # Formateado a 2 decimales para orden contable
         ])
         
     csv_content = output.getvalue()
@@ -562,6 +571,7 @@ async def exportar_kardex_csv(
         media_type="text/csv",
         headers={"Content-Disposition": f"attachment; filename=kardex_{sku}{sufijo_archivo}.csv"}
     )
+
 
 @router.post("/ajuste-costo", response_model=Movimiento, status_code=status.HTTP_201_CREATED)
 async def registrar_ajuste_costo(

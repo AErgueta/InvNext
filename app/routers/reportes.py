@@ -91,30 +91,6 @@ async def calcular_reporte_utilidad():
 # NUEVOS ENDPOINTS: ALERTAS DE INVENTARIO
 # ==========================================
 
-@router.get("/stock-bajo", status_code=status.HTTP_200_OK)
-async def reporte_stock_bajo():
-    """
-    Devuelve los artículos cuyo stock actual está en o por debajo de su stock mínimo configurado.
-    """
-    todos = await Articulo.find_all().to_list()
-    articulos_en_alerta = []
-
-    for art in todos:
-        if art.stock_actual <= art.stock_minimo:
-            articulos_en_alerta.append({
-                "sku": art.sku,
-                "nombre": art.nombre,
-                "stock_actual": art.stock_actual,
-                "stock_minimo": art.stock_minimo,
-                "deficit": art.stock_minimo - art.stock_actual,
-                "estado": "CRÍTICO" if art.stock_actual == 0 else "REABASTECER"
-            })
-
-    return {
-        "total_alertas": len(articulos_en_alerta),
-        "articulos": articulos_en_alerta
-    }
-
 
 @router.get("/lotes-por-vencer", status_code=status.HTTP_200_OK)
 async def reporte_lotes_por_vencer(dias_limite: int = Query(default=30, description="Días de anticipación para la alerta")):
@@ -158,3 +134,34 @@ async def reporte_lotes_por_vencer(dias_limite: int = Query(default=30, descript
         "total_lotes_en_riesgo": len(lotes_en_riesgo),
         "lotes": lotes_en_riesgo
     }
+
+@router.get("/stock-bajo", status_code=status.HTTP_200_OK)
+async def reporte_stock_bajo():
+    """
+    Escanea el inventario y devuelve los artículos que alcanzaron su punto de reorden o stock mínimo.
+    """
+    articulos_criticos = await Articulo.find(
+        Articulo.stock_actual <= Articulo.punto_reorden
+    ).to_list()
+    
+    alertas = []
+    for art in articulos_criticos:
+        if art.stock_actual <= art.stock_minimo:
+            estado = "CRÍTICO" 
+        else:
+            estado = "REORDEN" 
+            
+        alertas.append({
+            "sku": art.sku,
+            "nombre": art.nombre,
+            "stock_actual": art.stock_actual,
+            "punto_reorden": art.punto_reorden,
+            "stock_minimo": art.stock_minimo,
+            "estado_alerta": estado,
+            "diferencia_reorden": art.punto_reorden - art.stock_actual
+        })
+        
+    alertas.sort(key=lambda x: x["diferencia_reorden"], reverse=True)
+    
+    # Devolvemos la lista directamente para que el .forEach() de JavaScript funcione perfecto
+    return alertas
