@@ -11,6 +11,7 @@ from app.models.proveedor import Proveedor
 from app.models.orden_compra import OrdenCompra
 from app.models.almacen import Almacen
 from app.models.usuario import Usuario
+from app.models.flujo import FlujoGobernanza, InstanciaTracking
 
 load_dotenv()
 
@@ -31,7 +32,9 @@ async def init_db():
             Proveedor,       # <-- Agregado
             OrdenCompra,     # <-- Agregado
             Almacen,
-            Usuario
+            Usuario,
+            FlujoGobernanza,
+            InstanciaTracking
         ] 
     )
     print(f"Conexión exitosa a la base de datos: {DATABASE_NAME}")

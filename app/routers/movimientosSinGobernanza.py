@@ -7,9 +7,6 @@ from zoneinfo import ZoneInfo
 import csv
 import io
 
-
-from bson import ObjectId
-
 from app.routers.auth import obtener_usuario_actual
 
 # 2. Modelos
@@ -17,7 +14,6 @@ from app.models.movimiento import Movimiento, TipoMovimiento
 from app.models.articulo import Articulo, StockAlmacen
 from app.models.lote import Lote, StockLoteAlmacen
 from app.models.usuario import Usuario, RolUsuario
-from app.models.flujo import InstanciaTracking
 
 # 3. Clases de Petición y Respuesta (Esquemas Pydantic)
 class PeticionMovimiento(BaseModel):
@@ -80,98 +76,83 @@ async def registrar_movimiento(
     peticion: PeticionMovimiento,
     usuario_actual = Depends(obtener_usuario_actual)
 ):
-    # --- 1. VALIDACIONES DE SEGURIDAD BÁSICAS ---
-    if usuario_actual.rol == RolUsuario.OPERADOR:
-        if peticion.codigo_almacen != usuario_actual.codigo_almacen:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Acceso denegado: Como operador solo puedes registrar movimientos en el almacén '{usuario_actual.codigo_almacen}'."
-            )
-        if peticion.tipo_movimiento == TipoMovimiento.AJUSTE:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Acceso denegado: Solo los administradores pueden realizar ajustes manuales de inventario."
-            )
-
-    articulo = await Articulo.find_one(Articulo.sku == peticion.sku_articulo)
-    if not articulo:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"El artículo con SKU '{peticion.sku_articulo}' no existe."
-        )
-
-    # --- 2. CREACIÓN DEL DOCUMENTO (Solo intención, no afecta stock físico) ---
+    # --- 0. CONVERSIÓN E INYECCIÓN DE SEGURIDAD ---
     movimiento = Movimiento(
         sku_articulo=peticion.sku_articulo,
         codigo_almacen=peticion.codigo_almacen,
         numero_lote=peticion.numero_lote,
-        usuario=usuario_actual.username, 
+        usuario=usuario_actual.username, # <--- FIRMA INMUTABLE
         tipo_movimiento=peticion.tipo_movimiento,
         cantidad=peticion.cantidad,
         costo_unitario=peticion.costo_unitario,
         concepto=peticion.concepto,
         id_referencia=peticion.id_referencia,
         precio_venta=peticion.precio_venta,
-        fecha_vencimiento=peticion.fecha_vencimiento,
-        estado="PENDIENTE" # <--- El candado inicial
+        fecha_vencimiento=peticion.fecha_vencimiento
     )
-    
-    await movimiento.insert()
-    return movimiento
 
+    # --- 1. VALIDACIONES DE SEGURIDAD Y AUDITORÍA ---
+    if usuario_actual.rol == RolUsuario.OPERADOR:
+        if movimiento.codigo_almacen != usuario_actual.codigo_almacen:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Acceso denegado: Como operador solo puedes registrar movimientos en el almacén '{usuario_actual.codigo_almacen}'."
+            )
+        if movimiento.tipo_movimiento == TipoMovimiento.AJUSTE:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Acceso denegado: Solo los administradores pueden realizar ajustes manuales de inventario."
+            )
 
-@router.patch("/{movimiento_id}/ejecutar", status_code=status.HTTP_200_OK)
-async def ejecutar_movimiento(
-    movimiento_id: str,
-    usuario_actual = Depends(obtener_usuario_actual)
-):
-    movimiento = await Movimiento.get(ObjectId(movimiento_id))
-    if not movimiento:
-        raise HTTPException(status_code=404, detail="Movimiento no encontrado.")
-
-    if getattr(movimiento, "estado", "EJECUTADO") == "EJECUTADO":
-        raise HTTPException(status_code=400, detail="Este movimiento ya fue procesado y sumado al inventario.")
-
-    # --- 1. VALIDACIÓN DE GOBERNANZA (EL CANDADO) ---
-    instancia = await InstanciaTracking.find_one(InstanciaTracking.referencia_id == str(movimiento.id))
-    if instancia and instancia.estado_general != "COMPLETADO":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No se puede procesar el inventario. El flujo de aprobación aún no ha concluido."
-        )
-
-    # --- 2. LÓGICA MATEMÁTICA Y GESTIÓN DE LOTES (Tu código original intacto) ---
+    # --- 2. VERIFICACIÓN DEL ARTÍCULO ---
     articulo = await Articulo.find_one(Articulo.sku == movimiento.sku_articulo)
     
+    if not articulo:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"El artículo con SKU '{movimiento.sku_articulo}' no existe."
+        )
+
+    # --- INTERCEPTOR: Lógica de Lote Perpetuo ---
     if not articulo.controla_lotes:
         movimiento.fecha_vencimiento = None
 
     variacion_stock = 0.0
 
+    # --- 3. LÓGICA MATEMÁTICA Y GESTIÓN DE LOTES CON ALMACENES ---
     if movimiento.tipo_movimiento in [TipoMovimiento.ENTRADA, TipoMovimiento.ENTRADA_PRODUCCION, TipoMovimiento.ENTRADA_TRASPASO]:
-        lote = await Lote.find_one(Lote.numero_lote == movimiento.numero_lote, Lote.sku_articulo == movimiento.sku_articulo)
+        lote = await Lote.find_one(
+            Lote.numero_lote == movimiento.numero_lote,
+            Lote.sku_articulo == movimiento.sku_articulo
+        )
+        
         if lote:
             if not articulo.controla_lotes:
                 valor_actual = lote.cantidad_actual * lote.costo_unitario
                 valor_nuevo = movimiento.cantidad * movimiento.costo_unitario
                 nueva_cantidad = lote.cantidad_actual + movimiento.cantidad
-                lote.costo_unitario = round((valor_actual + valor_nuevo) / nueva_cantidad, 4)
+                nuevo_costo = (valor_actual + valor_nuevo) / nueva_cantidad
+                lote.costo_unitario = round(nuevo_costo, 4)
             else:
                 lote.costo_unitario = movimiento.costo_unitario
                 
             lote.cantidad_actual += movimiento.cantidad
-            stock_lote_alm = next((sl for sl in lote.stock_por_almacen if sl.codigo_almacen == movimiento.codigo_almacen), None)
             
+            stock_lote_alm = next((sl for sl in lote.stock_por_almacen if sl.codigo_almacen == movimiento.codigo_almacen), None)
             if stock_lote_alm:
                 stock_lote_alm.cantidad += movimiento.cantidad
             else:
                 lote.stock_por_almacen.append(StockLoteAlmacen(codigo_almacen=movimiento.codigo_almacen, cantidad=movimiento.cantidad))
+                
             await lote.save()
         else:
             nuevo_lote = Lote(
-                sku_articulo=movimiento.sku_articulo, numero_lote=movimiento.numero_lote,
-                cantidad_inicial=movimiento.cantidad, cantidad_actual=movimiento.cantidad,
-                costo_unitario=movimiento.costo_unitario, fecha_vencimiento=movimiento.fecha_vencimiento,
+                sku_articulo=movimiento.sku_articulo,
+                numero_lote=movimiento.numero_lote,
+                cantidad_inicial=movimiento.cantidad,
+                cantidad_actual=movimiento.cantidad,
+                costo_unitario=movimiento.costo_unitario,
+                fecha_vencimiento=movimiento.fecha_vencimiento,
                 stock_por_almacen=[StockLoteAlmacen(codigo_almacen=movimiento.codigo_almacen, cantidad=movimiento.cantidad)]
             )
             await nuevo_lote.insert()
@@ -180,17 +161,32 @@ async def ejecutar_movimiento(
         variacion_stock = movimiento.cantidad
 
     elif movimiento.tipo_movimiento in [TipoMovimiento.SALIDA_VENTA, TipoMovimiento.SALIDA_PRODUCCION, TipoMovimiento.SALIDA_TRASPASO]:
-        lote = await Lote.find_one(Lote.numero_lote == movimiento.numero_lote, Lote.sku_articulo == movimiento.sku_articulo)
+        lote = await Lote.find_one(
+            Lote.numero_lote == movimiento.numero_lote,
+            Lote.sku_articulo == movimiento.sku_articulo
+        )
+        
         if not lote:
-            raise HTTPException(status_code=404, detail="El lote no está registrado.")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"El lote '{movimiento.numero_lote}' no está registrado."
+            )
             
         stock_lote_alm = next((sl for sl in lote.stock_por_almacen if sl.codigo_almacen == movimiento.codigo_almacen), None)
+        
         if not stock_lote_alm or stock_lote_alm.cantidad < movimiento.cantidad:
-            raise HTTPException(status_code=400, detail="Stock insuficiente en el lote especificado.")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Stock insuficiente en el lote {movimiento.numero_lote} para el almacén {movimiento.codigo_almacen}. Actual: {stock_lote_alm.cantidad if stock_lote_alm else 0}"
+            )
             
         movimiento.costo_unitario = lote.costo_unitario
-        if movimiento.tipo_movimiento == TipoMovimiento.SALIDA_VENTA and movimiento.precio_venta is None:
-            movimiento.precio_venta = articulo.precio_venta
+        
+        if movimiento.tipo_movimiento == TipoMovimiento.SALIDA_VENTA:
+            if movimiento.precio_venta is None:
+                movimiento.precio_venta = articulo.precio_venta
+        else:
+            movimiento.precio_venta = None
 
         lote.cantidad_actual -= movimiento.cantidad
         stock_lote_alm.cantidad -= movimiento.cantidad
@@ -200,29 +196,30 @@ async def ejecutar_movimiento(
         variacion_stock = -movimiento.cantidad
 
     elif movimiento.tipo_movimiento == TipoMovimiento.AJUSTE:
-            lote = await Lote.find_one(
-                Lote.numero_lote == movimiento.numero_lote,
-                Lote.sku_articulo == movimiento.sku_articulo
-            )
-            if not lote:
-                raise HTTPException(status_code=404, detail="Lote no encontrado para el ajuste.")
-                
-            stock_lote_alm = next((sl for sl in lote.stock_por_almacen if sl.codigo_almacen == movimiento.codigo_almacen), None)
+        lote = await Lote.find_one(
+            Lote.numero_lote == movimiento.numero_lote,
+            Lote.sku_articulo == movimiento.sku_articulo
+        )
+        
+        if not lote:
+            raise HTTPException(status_code=404, detail="Lote no encontrado para el ajuste.")
             
-            if stock_lote_alm:
-                diferencia = movimiento.cantidad - stock_lote_alm.cantidad
-                stock_lote_alm.cantidad = movimiento.cantidad
-            else:
-                diferencia = movimiento.cantidad
-                lote.stock_por_almacen.append(StockLoteAlmacen(codigo_almacen=movimiento.codigo_almacen, cantidad=movimiento.cantidad))
-                
-            lote.cantidad_actual += diferencia
-            await lote.save()
+        stock_lote_alm = next((sl for sl in lote.stock_por_almacen if sl.codigo_almacen == movimiento.codigo_almacen), None)
+        
+        if stock_lote_alm:
+            diferencia = movimiento.cantidad - stock_lote_alm.cantidad
+            stock_lote_alm.cantidad = movimiento.cantidad
+        else:
+            diferencia = movimiento.cantidad
+            lote.stock_por_almacen.append(StockLoteAlmacen(codigo_almacen=movimiento.codigo_almacen, cantidad=movimiento.cantidad))
             
-            articulo.stock_actual += diferencia
-            variacion_stock = diferencia
+        lote.cantidad_actual += diferencia
+        await lote.save()
+        
+        articulo.stock_actual += diferencia
+        variacion_stock = diferencia
 
-    # --- 3. IMPACTAR STOCK EN EL ARTÍCULO ---
+    # --- 4. IMPACTAR STOCK EN EL ARTÍCULO (POR ALMACÉN) ---
     almacen_encontrado = False
     for stock_alm in articulo.stock_por_almacen:
         if stock_alm.codigo_almacen == movimiento.codigo_almacen:
@@ -231,14 +228,19 @@ async def ejecutar_movimiento(
             break
             
     if not almacen_encontrado:
-        articulo.stock_por_almacen.append(StockAlmacen(codigo_almacen=movimiento.codigo_almacen, cantidad=variacion_stock))
+        articulo.stock_por_almacen.append(
+            StockAlmacen(
+                codigo_almacen=movimiento.codigo_almacen, 
+                cantidad=variacion_stock
+            )
+        )
 
-    # --- 4. GUARDADO FINAL ---
-    movimiento.estado = "EJECUTADO"
+    # --- 5. GUARDADO FINAL ---
     await articulo.save()
-    await movimiento.save()
+    await movimiento.insert()
     
-    return {"mensaje": "Movimiento ejecutado y stock actualizado correctamente.", "movimiento": movimiento}
+    return movimiento
+
 
 @router.post("/traspaso", status_code=status.HTTP_201_CREATED)
 async def registrar_traspaso(
@@ -292,8 +294,7 @@ async def registrar_traspaso(
         concepto=peticion.concepto,
         cantidad=peticion.cantidad,
         costo_unitario=lote.costo_unitario,
-        id_referencia=peticion.id_referencia,
-        estado="EJECUTADO"
+        id_referencia=peticion.id_referencia
     )
 
     mov_entrada = Movimiento(
@@ -306,8 +307,7 @@ async def registrar_traspaso(
         concepto=peticion.concepto,
         cantidad=peticion.cantidad,
         costo_unitario=lote.costo_unitario,
-        id_referencia=peticion.id_referencia,
-        estado="EJECUTADO"
+        id_referencia=peticion.id_referencia
     )
 
     await lote.save()
@@ -396,8 +396,7 @@ async def registrar_salida_fifo(
             cantidad=cantidad_a_tomar,
             costo_unitario=lote.costo_unitario, 
             precio_venta=precio_v,
-            id_referencia=peticion.id_referencia,
-            estado="EJECUTADO"
+            id_referencia=peticion.id_referencia
         )
         
         movimientos_a_guardar.append(nuevo_movimiento) 
@@ -613,8 +612,7 @@ async def registrar_ajuste_costo(
         concepto=concepto_extendido,
         cantidad=0.0,            
         costo_unitario=peticion.nuevo_costo,
-        id_referencia=peticion.id_referencia,
-        estado="EJECUTADO"
+        id_referencia=peticion.id_referencia
     )
     await movimiento.insert()
 

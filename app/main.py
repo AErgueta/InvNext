@@ -6,7 +6,7 @@ from fastapi.responses import HTMLResponse
 from app.database import init_db
 
 # Importamos nuestros enrutadores
-from app.routers import articulos, movimientos, lotes, reportes, proveedores, ordenes_compra, almacenes, auth
+from app.routers import articulos, movimientos, lotes, reportes, proveedores, ordenes_compra, almacenes, auth, gobernanza
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -69,3 +69,4 @@ app.include_router(proveedores.router)
 app.include_router(ordenes_compra.router)
 app.include_router(almacenes.router)
 app.include_router(auth.router)
+app.include_router(gobernanza.router)
