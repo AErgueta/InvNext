@@ -45,6 +45,7 @@ class Movimiento(Document):
     notas: Optional[str] = None
     
     fecha_registro: datetime = Field(default_factory=lambda: datetime.now(ZoneInfo("America/La_Paz")))
+    estado: str = "PENDIENTE"
 
     @field_serializer("fecha_registro")
     def a_hora_local(self, dt: datetime) -> str:
