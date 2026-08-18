@@ -6,7 +6,7 @@ from fastapi.responses import HTMLResponse
 from app.database import init_db
 
 # Importamos nuestros enrutadores
-from app.routers import articulos, movimientos, lotes, reportes, proveedores, ordenes_compra, almacenes, auth, gobernanza
+from app.routers import articulos, movimientos, lotes, reportes, proveedores, ordenes_compra, almacenes, auth, gobernanza, clientes, ventas
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -60,6 +60,13 @@ async def ver_pantalla_alertas(request: Request):
         context={"request": request}
     )
 
+@app.get("/vencimientos-view", tags=["Vistas"])
+async def ver_pantalla_vencimientos(request: Request):
+    return templates.TemplateResponse(
+        request=request, 
+        name="vencimientos.hbs"
+    )
+
 # Conectamos las rutas de los módulos a la aplicación
 app.include_router(articulos.router)
 app.include_router(movimientos.router)
@@ -70,3 +77,5 @@ app.include_router(ordenes_compra.router)
 app.include_router(almacenes.router)
 app.include_router(auth.router)
 app.include_router(gobernanza.router)
+app.include_router(clientes.router)
+app.include_router(ventas.router)

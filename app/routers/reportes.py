@@ -138,30 +138,38 @@ async def reporte_lotes_por_vencer(dias_limite: int = Query(default=30, descript
 @router.get("/stock-bajo", status_code=status.HTTP_200_OK)
 async def reporte_stock_bajo():
     """
-    Escanea el inventario y devuelve los artículos que alcanzaron su punto de reorden o stock mínimo.
+    Escanea el inventario y devuelve los artículos que alcanzaron su punto de reorden 
+    o stock mínimo, evaluando de forma independiente cada almacén.
     """
-    articulos_criticos = await Articulo.find(
-        Articulo.stock_actual <= Articulo.punto_reorden
-    ).to_list()
+    articulos = await Articulo.find_all().to_list()
     
     alertas = []
-    for art in articulos_criticos:
-        if art.stock_actual <= art.stock_minimo:
-            estado = "CRÍTICO" 
-        else:
-            estado = "REORDEN" 
+    for art in articulos:
+        # Iteramos sobre cada almacén del artículo
+        for stock_alm in art.stock_por_almacen:
             
-        alertas.append({
-            "sku": art.sku,
-            "nombre": art.nombre,
-            "stock_actual": art.stock_actual,
-            "punto_reorden": art.punto_reorden,
-            "stock_minimo": art.stock_minimo,
-            "estado_alerta": estado,
-            "diferencia_reorden": art.punto_reorden - art.stock_actual
-        })
+            # Verificamos que tenga configurado un punto de reorden
+            if stock_alm.punto_reorden is not None and stock_alm.punto_reorden > 0:
+                
+                # Evaluamos el stock local de ese almacén
+                if stock_alm.cantidad <= stock_alm.punto_reorden:
+                    if stock_alm.cantidad <= stock_alm.stock_minimo:
+                        estado = "CRÍTICO" 
+                    else:
+                        estado = "REORDEN" 
+                        
+                    alertas.append({
+                        "sku": art.sku,
+                        "nombre": art.nombre,
+                        "almacen": stock_alm.codigo_almacen,     # <--- AHORA ENVIAMOS EL ALMACÉN
+                        "stock_actual": stock_alm.cantidad,      # <--- STOCK LOCAL
+                        "punto_reorden": stock_alm.punto_reorden,
+                        "stock_minimo": stock_alm.stock_minimo,
+                        "estado_alerta": estado,
+                        "diferencia_reorden": stock_alm.punto_reorden - stock_alm.cantidad
+                    })
         
+    # Ordenamos para mostrar primero las alertas con mayor falta de inventario
     alertas.sort(key=lambda x: x["diferencia_reorden"], reverse=True)
     
-    # Devolvemos la lista directamente para que el .forEach() de JavaScript funcione perfecto
     return alertas

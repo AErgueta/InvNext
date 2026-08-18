@@ -28,6 +28,7 @@ class PeticionMovimiento(BaseModel):
     cantidad: float = Field(..., gt=0, description="Cantidad del movimiento")
     costo_unitario: float = 0.0
     concepto: str
+    flujo_trabajo_seleccionado: str = Field(..., description="Flujo de trabajo/aprobación seleccionado manualmente por el usuario")
     id_referencia: Optional[str] = None
     precio_venta: Optional[float] = None
     fecha_vencimiento: Optional[datetime] = None
@@ -113,12 +114,15 @@ async def registrar_movimiento(
         id_referencia=peticion.id_referencia,
         precio_venta=peticion.precio_venta,
         fecha_vencimiento=peticion.fecha_vencimiento,
+        
+        # ---> LÍNEA AGREGADA: Pasamos el flujo seleccionado por el usuario <---
+        flujo_trabajo_seleccionado=peticion.flujo_trabajo_seleccionado,
+        
         estado="PENDIENTE" # <--- El candado inicial
     )
     
     await movimiento.insert()
     return movimiento
-
 
 @router.patch("/{movimiento_id}/ejecutar", status_code=status.HTTP_200_OK)
 async def ejecutar_movimiento(

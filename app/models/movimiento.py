@@ -12,6 +12,8 @@ class TipoMovimiento(str, Enum):
     SALIDA_VENTA = "OUT_SALE"         
     SALIDA_PRODUCCION = "OUT_PROD"    
     AJUSTE = "ADJ"
+    ENTRADA_DEVOLUCION = "IN_RETURN"
+    ANULACION_SALIDA = "REV_OUT"
     
     # --- NUEVOS TIPOS PARA MULTI-ALMACÉN ---
     ENTRADA_TRASPASO = "IN_TRANS"     # Ingreso por traspaso desde otro almacén
@@ -23,7 +25,7 @@ class TipoMovimiento(str, Enum):
 class Movimiento(Document):
     sku_articulo: str
     
-    # --- NUEVO CAMPO OBLIGATORIO: ALMACÉN ---
+    # --- CAMPO OBLIGATORIO: ALMACÉN ---
     codigo_almacen: str 
     
     numero_lote: str  
@@ -34,17 +36,23 @@ class Movimiento(Document):
     cantidad: float
     costo_unitario: float = 0.0
     
+    # --- NUEVO CAMPO PARA GOBERNANZA / FLUJOS DE APROBACIÓN ---
+    # Es obligatorio porque el usuario debe seleccionar manualmente el flujo
+    flujo_trabajo_seleccionado: str = Field(..., description="Flujo de trabajo/aprobación seleccionado manualmente por el usuario")
+    
     precio_venta: Optional[float] = None 
     
     fecha_vencimiento: Optional[str] = None 
     
-    # --- NUEVO CAMPO OPCIONAL: CONTRA-PARTE DEL TRASPASO ---
+    # --- CAMPO OPCIONAL: CONTRA-PARTE DEL TRASPASO ---
     almacen_contraparte: Optional[str] = None 
     
     id_referencia: Optional[str] = None 
     notas: Optional[str] = None
     
     fecha_registro: datetime = Field(default_factory=lambda: datetime.now(ZoneInfo("America/La_Paz")))
+    
+    # --- CANDADO DIGITAL ---
     estado: str = "PENDIENTE"
 
     @field_serializer("fecha_registro")
@@ -57,6 +65,6 @@ class Movimiento(Document):
         name = "movimientos"
         indexes = [
             pymongo.IndexModel([("sku_articulo", pymongo.ASCENDING)]),
-            pymongo.IndexModel([("codigo_almacen", pymongo.ASCENDING)]), # Nuevo índice para búsquedas rápidas por almacén
+            pymongo.IndexModel([("codigo_almacen", pymongo.ASCENDING)]), # Índice para búsquedas rápidas por almacén
             pymongo.IndexModel([("numero_lote", pymongo.ASCENDING)])
         ]

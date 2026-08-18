@@ -12,6 +12,9 @@ from app.models.orden_compra import OrdenCompra
 from app.models.almacen import Almacen
 from app.models.usuario import Usuario
 from app.models.flujo import FlujoGobernanza, InstanciaTracking
+from app.models.cliente import Cliente
+from app.models.venta import Venta
+from app.models.cuenta_corriente import CuentaCorriente
 
 load_dotenv()
 
@@ -22,7 +25,7 @@ async def init_db():
     client = AsyncIOMotorClient(MONGODB_URL)
     db = client[DATABASE_NAME]
     
-    # Registramos NUESTROS 5 MODELOS en Beanie
+    # Registramos NUESTROS 12 MODELOS en Beanie
     await init_beanie(
         database=db,
         document_models=[
@@ -34,7 +37,10 @@ async def init_db():
             Almacen,
             Usuario,
             FlujoGobernanza,
-            InstanciaTracking
+            InstanciaTracking,
+            Cliente,
+            Venta,
+            CuentaCorriente
         ] 
     )
     print(f"Conexión exitosa a la base de datos: {DATABASE_NAME}")

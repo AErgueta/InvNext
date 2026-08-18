@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Panel de Alertas de Stock</title>
+    <title>Panel de Vencimientos</title>
     <style>
         body { 
             font-family: Arial, sans-serif; 
@@ -11,7 +11,6 @@
             color: #333;
         }
         
-        /* Estilos de la tabla */
         table { 
             width: 100%; 
             margin-top: 20px; 
@@ -33,7 +32,6 @@
             background-color: #f1f1f1;
         }
         
-        /* Etiquetas visuales (Badges) */
         .badge {
             padding: 6px 12px;
             border-radius: 20px;
@@ -42,13 +40,13 @@
             display: inline-block;
         }
 
-        .badge-critico {
-            background-color: #e74c3c; /* Rojo alerta */
+        .badge-vencido {
+            background-color: #e74c3c; 
             box-shadow: 0 0 8px rgba(231, 76, 60, 0.5);
         }
 
-        .badge-reorden {
-            background-color: #f39c12; /* Naranja/Amarillo */
+        .badge-por-vencer {
+            background-color: #f39c12; 
         }
         
         .acciones-panel {
@@ -56,6 +54,25 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
+        }
+
+        .controles {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .controles label {
+            font-weight: bold;
+            color: #555;
+        }
+
+        .controles input {
+            padding: 8px;
+            width: 70px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            text-align: center;
         }
 
         button.btn-refrescar {
@@ -72,33 +89,37 @@
 <body>
 
     <div class="acciones-panel">
-        <h2>Radar de Abastecimiento</h2>
-        <button id="btn-refrescar-alertas" class="btn-refrescar">
-            🔄 Actualizar Radar
-        </button>
+        <h2>Radar de Vencimientos</h2>
+        <div class="controles">
+            <label for="input-dias">Días de anticipación:</label>
+            <input type="number" id="input-dias" value="30" min="1">
+            <button id="btn-refrescar-vencimientos" class="btn-refrescar">
+                🔄 Actualizar Radar
+            </button>
+        </div>
     </div>
 
     <table>
         <thead>
             <tr>
                 <th>SKU</th>
-                <th>Almacén</th> <!-- NUEVA COLUMNA -->
+                <th>Lote</th>
                 <th>Estado</th>
+                <th>Tiempo Restante</th>
+                <th>Fecha Límite</th>
                 <th>Stock Actual</th>
-                <th>Punto Reorden</th>
-                <th>Stock Mínimo</th>
-                <th>Faltante (Unidades)</th>
+                <th>Pérdida Potencial ($)</th>
             </tr>
         </thead>
-        <tbody id="cuerpo-tabla-alertas">
+        <tbody id="cuerpo-tabla-vencimientos">
             <tr>
                 <td colspan="7" style="padding: 30px; color: #666; font-style: italic;">
-                    Cargando el radar de inventario...
+                    Cargando lotes...
                 </td>
             </tr>
         </tbody>
     </table>
 
-    <script src="/static/js/alertas.js"></script>
+    <script src="/static/js/vencimientos.js"></script>
 </body>
 </html>

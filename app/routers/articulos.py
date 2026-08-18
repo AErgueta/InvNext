@@ -274,3 +274,20 @@ async def obtener_lotes_por_almacen(sku: str, codigo_almacen: Optional[str] = No
         "stock_total_en_consulta": total_en_almacen,
         "lotes_disponibles": resultado_lotes
     }
+
+@router.get("/codigo-barras/{codigo}", status_code=status.HTTP_200_OK)
+async def buscar_por_codigo_barras(codigo: str):
+    """
+    Busca un artículo instantáneamente escaneando su código de barras.
+    Ideal para integración con hardware (Punto de Venta / Lector láser).
+    """
+    # Buscamos la coincidencia exacta gracias al índice que creamos
+    articulo = await Articulo.find_one(Articulo.codigo_barras == codigo)
+    
+    if not articulo:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No se encontró ningún artículo con el código de barras: {codigo}"
+        )
+        
+    return articulo
