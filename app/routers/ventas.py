@@ -181,6 +181,7 @@ async def despachar_venta(
         
         cantidad_restante = mov.cantidad
         lotes_utilizados = []
+        costo_total_lotes = 0.0  # <--- 1. NUEVO: Variable para acumular el valor financiero
         
         for lote in lotes_disponibles:
             if cantidad_restante <= 0:
@@ -190,6 +191,9 @@ async def despachar_venta(
             
             if stock_lote_alm and stock_lote_alm.cantidad > 0:
                 cantidad_a_tomar = min(stock_lote_alm.cantidad, cantidad_restante)
+                
+                # <--- 2. NUEVO: Acumulamos el costo de las piezas que estamos sacando de este lote específico
+                costo_total_lotes += cantidad_a_tomar * lote.costo_unitario 
                 
                 lote.cantidad_actual -= cantidad_a_tomar
                 stock_lote_alm.cantidad -= cantidad_a_tomar
@@ -214,6 +218,9 @@ async def despachar_venta(
         mov.numero_lote = ", ".join(lotes_utilizados) if lotes_utilizados else "SIN-LOTE"
         mov.estado = "EJECUTADO"
         
+        # <--- 3. NUEVO: Asignamos el costo unitario real calculado al movimiento
+        mov.costo_unitario = costo_total_lotes / mov.cantidad
+
     # 2. PREPARACIÓN FINANCIERA (Cuentas por Cobrar)
     cargo_cxc = None
     

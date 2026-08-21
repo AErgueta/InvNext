@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>InvNext - Sistema de Gestión</title>
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+
+    <!-- BARRA DE NAVEGACIÓN SUPERIOR (Solo visible si mostrar_menu es True) -->
+    {% if mostrar_menu %}
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/vistas/kardex">InvNext</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <!-- Los enlaces a tus pantallas -->
+                    <li class="nav-item"><a class="nav-link" href="/vistas/dashboard">Dashboard</a></li>
+                    <li class="nav-item"><a class="nav-link" href="/vistas/kardex">Kardex</a></li>
+                    <li class="nav-item"><a class="nav-link" href="/vistas/alertas">Alertas</a></li>
+                    <li class="nav-item"><a class="nav-link" href="/vistas/vencimientos">Vencimientos</a></li>
+                </ul>
+                <div class="d-flex">
+                    <button class="btn btn-outline-danger btn-sm" onclick="cerrarSesion()">Cerrar Sesión</button>
+                </div>
+            </div>
+        </div>
+    </nav>
+    {% endif %}
+
+    <!-- CONTENEDOR PRINCIPAL -->
+    <div class="container">
+        <!-- Aquí Jinja2 inyectará el contenido de login, kardex, etc. -->
+        {% block contenido %}
+        {% endblock %}
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Tu script global para manejar el login y tokens -->
+    <script src="/static/js/auth.js"></script>
+    
+    <!-- Bloque para scripts específicos de cada pantalla -->
+    {% block scripts %}
+    {% endblock %}
+</body>
+</html>

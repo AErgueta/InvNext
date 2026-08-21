@@ -6,6 +6,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 import csv
 import io
+import uuid
 
 
 from bson import ObjectId
@@ -60,6 +61,7 @@ class PeticionTraspaso(BaseModel):
 class RespuestaKardex(BaseModel):
     sku: str
     almacen: Optional[str] = None
+    unidad_medida: str = "UNIDADES"
     saldo_inicial: float
     movimientos: list[Movimiento]
 
@@ -69,6 +71,15 @@ class PeticionAjusteCosto(BaseModel):
     nuevo_costo: float = Field(..., gt=0, description="El nuevo costo unitario corregido")
     concepto: str = Field(..., description="Motivo de la revalorización")
     id_referencia: str | None = None
+
+class PeticionIngresoManual(BaseModel):
+    sku_articulo: str
+    codigo_almacen: str
+    cantidad: float = Field(..., gt=0, description="Cantidad a ingresar")
+    costo_unitario: float = Field(..., gt=0, description="Costo unitario mayor a cero")
+    numero_lote: Optional[str] = None
+    flujo_trabajo_seleccionado: str = Field(..., description="Flujo de trabajo de seguimiento obligatorio")
+    concepto: str = "Ingreso manual"
 
 # 4. Enrutador
 router = APIRouter(
@@ -123,6 +134,56 @@ async def registrar_movimiento(
     
     await movimiento.insert()
     return movimiento
+
+@router.post("/ingreso", status_code=status.HTTP_201_CREATED)
+async def registrar_ingreso_manual(
+    peticion: PeticionIngresoManual,
+    usuario_actual: Usuario = Depends(obtener_usuario_actual)
+):
+    # 1. Validaciones de Seguridad
+    if usuario_actual.rol == RolUsuario.OPERADOR:
+        if peticion.codigo_almacen != usuario_actual.codigo_almacen:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Acceso denegado: Solo puedes registrar ingresos en '{usuario_actual.codigo_almacen}'."
+            )
+
+    articulo = await Articulo.find_one(Articulo.sku == peticion.sku_articulo)
+    if not articulo:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"El artículo con SKU '{peticion.sku_articulo}' no existe."
+        )
+
+    # 2. Autogeneración de Lote Inteligente
+    lote_final = peticion.numero_lote
+    if not lote_final or lote_final.strip() == "":
+        fecha_str = datetime.now().strftime("%Y%m%d")
+        hash_corto = uuid.uuid4().hex[:4].upper()
+        lote_final = f"LOT-{fecha_str}-{hash_corto}"
+
+    # 3. Creación del Documento (Con candado de PENDIENTE)
+    nuevo_movimiento = Movimiento(
+        sku_articulo=peticion.sku_articulo,
+        codigo_almacen=peticion.codigo_almacen,
+        numero_lote=lote_final,
+        usuario=usuario_actual.username,
+        tipo_movimiento=TipoMovimiento.ENTRADA, 
+        cantidad=peticion.cantidad,
+        costo_unitario=peticion.costo_unitario,
+        concepto=peticion.concepto,
+        flujo_trabajo_seleccionado=peticion.flujo_trabajo_seleccionado, 
+        estado="PENDIENTE" 
+    )
+    
+    await nuevo_movimiento.insert()
+
+    return {
+        "mensaje": "Ingreso manual registrado correctamente.",
+        "movimiento_id": str(nuevo_movimiento.id),
+        "lote": lote_final,
+        "estado": "PENDIENTE"
+    }
 
 @router.patch("/{movimiento_id}/ejecutar", status_code=status.HTTP_200_OK)
 async def ejecutar_movimiento(
@@ -473,12 +534,20 @@ async def obtener_movimientos_por_articulo(
         
     movimientos_periodo = await Movimiento.find(*filtros_periodo).sort(+Movimiento.fecha_registro).to_list()
     
+    # ---> NUEVO: Buscamos el artículo para leer sus metadatos <---
+    articulo = await Articulo.find_one(Articulo.sku == sku)
+    unidad = "UNIDADES" # Valor por defecto si no tiene metadatos
+    if articulo and articulo.metadatos:
+        unidad = articulo.metadatos.get("unidad_medida", "UNIDADES")
+
     return RespuestaKardex(
         sku=sku,
         almacen=codigo_almacen or "TODOS",
+        unidad_medida=unidad, # <--- Se lo pasamos al esquema de respuesta
         saldo_inicial=saldo_inicial,
         movimientos=movimientos_periodo
     )
+
 
 @router.get("/{sku}/exportar", status_code=status.HTTP_200_OK)
 async def exportar_kardex_csv(
@@ -494,6 +563,12 @@ async def exportar_kardex_csv(
     if fecha_fin and fecha_fin.tzinfo is None:
         fecha_fin = fecha_fin.replace(tzinfo=tz_local)
 
+    # ---> NUEVO: Buscamos el artículo para extraer su unidad de medida <---
+    articulo = await Articulo.find_one(Articulo.sku == sku)
+    unidad = "UNIDADES" 
+    if articulo and articulo.metadatos:
+        unidad = articulo.metadatos.get("unidad_medida", "UNIDADES")
+
     saldo_inicial = 0.0
     
     filtros_hist = [Movimiento.sku_articulo == sku]
@@ -505,7 +580,6 @@ async def exportar_kardex_csv(
         movimientos_previos = await Movimiento.find(*filtros_hist).to_list()
         
         for mov in movimientos_previos:
-            # Incluimos IN_TRANS en el cálculo histórico previo
             if mov.tipo_movimiento in [TipoMovimiento.ENTRADA, TipoMovimiento.ENTRADA_PRODUCCION, TipoMovimiento.ENTRADA_TRASPASO]:
                 saldo_inicial += mov.cantidad
             elif mov.tipo_movimiento in [TipoMovimiento.SALIDA_VENTA, TipoMovimiento.SALIDA_PRODUCCION, TipoMovimiento.SALIDA_TRASPASO]:
@@ -524,13 +598,12 @@ async def exportar_kardex_csv(
     output = io.StringIO()
     writer = csv.writer(output, delimiter=",")
     
-    # 1. Agregamos la columna "Saldo Valor" en las cabeceras del CSV
+    # ---> NUEVO: Inyectamos la unidad dinámica en las cabeceras del CSV <---
     writer.writerow([
         "Fecha", "Almacén", "Concepto", "Lote", "Tipo Movimiento", 
-        "Costo Unitario", "Ingreso", "Egreso", "Saldo Físico", "Saldo Valor"
+        "Costo Unitario", f"Ingreso ({unidad})", f"Egreso ({unidad})", f"Saldo Físico ({unidad})", "Saldo Valor"
     ])
     
-    # Fila de Saldo Inicial (con su valor inicial en dinero si aplica)
     valor_inicial_dinero = "$0.00" if saldo_inicial == 0 else "-"
     writer.writerow([
         fecha_inicio.strftime("%Y-%m-%d %H:%M") if fecha_inicio else "-", 
@@ -542,7 +615,6 @@ async def exportar_kardex_csv(
         ingreso = 0
         egreso = 0
         
-        # Alineado con los tipos que maneja tu frontend
         if mov.tipo_movimiento in [TipoMovimiento.ENTRADA, TipoMovimiento.ENTRADA_PRODUCCION, TipoMovimiento.ENTRADA_TRASPASO]:
             ingreso = mov.cantidad
             saldo_actual += mov.cantidad
@@ -550,7 +622,6 @@ async def exportar_kardex_csv(
             egreso = mov.cantidad
             saldo_actual -= mov.cantidad
             
-        # 2. Calculamos el saldo en dinero multiplicando el saldo físico actual por el costo unitario del movimiento
         saldo_valor = saldo_actual * mov.costo_unitario
             
         fecha_str = mov.fecha_registro.astimezone(tz_local).strftime("%Y-%m-%d %H:%M")
@@ -562,10 +633,10 @@ async def exportar_kardex_csv(
             mov.numero_lote,
             mov.tipo_movimiento.value, 
             mov.costo_unitario,
-            ingreso,
-            egreso,
+            ingreso if ingreso > 0 else "-", # Limpieza visual
+            egreso if egreso > 0 else "-",   # Limpieza visual
             saldo_actual,
-            round(saldo_valor, 2) # Formateado a 2 decimales para orden contable
+            round(saldo_valor, 2) 
         ])
         
     csv_content = output.getvalue()
@@ -576,7 +647,6 @@ async def exportar_kardex_csv(
         media_type="text/csv",
         headers={"Content-Disposition": f"attachment; filename=kardex_{sku}{sufijo_archivo}.csv"}
     )
-
 
 @router.post("/ajuste-costo", response_model=Movimiento, status_code=status.HTTP_201_CREATED)
 async def registrar_ajuste_costo(

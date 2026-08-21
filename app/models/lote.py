@@ -1,7 +1,7 @@
 import pymongo
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
-from typing import Optional, List
+from typing import Optional, List, Union
 from pydantic import BaseModel, Field, field_serializer
 from beanie import Document
 
@@ -21,7 +21,7 @@ class Lote(Document):
     stock_por_almacen: List[StockLoteAlmacen] = Field(default_factory=list)
     
     costo_unitario: float = 0.0
-    fecha_vencimiento: Optional[str] = None
+    fecha_vencimiento: Optional[Union[str, datetime]] = None
     
     fecha_creacion: datetime = Field(default_factory=lambda: datetime.now(ZoneInfo("America/La_Paz")))
 

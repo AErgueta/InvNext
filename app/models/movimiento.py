@@ -38,7 +38,7 @@ class Movimiento(Document):
     
     # --- NUEVO CAMPO PARA GOBERNANZA / FLUJOS DE APROBACIÓN ---
     # Es obligatorio porque el usuario debe seleccionar manualmente el flujo
-    flujo_trabajo_seleccionado: str = Field(..., description="Flujo de trabajo/aprobación seleccionado manualmente por el usuario")
+    flujo_trabajo_seleccionado: Optional[str] = Field(default=None, description="Flujo de trabajo/aprobación seleccionado manualmente por el usuario")
     
     precio_venta: Optional[float] = None 
     

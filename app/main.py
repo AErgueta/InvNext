@@ -1,12 +1,10 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
-from fastapi.responses import HTMLResponse
 from app.database import init_db
 
-# Importamos nuestros enrutadores
-from app.routers import articulos, movimientos, lotes, reportes, proveedores, ordenes_compra, almacenes, auth, gobernanza, clientes, ventas
+# Importamos todos nuestros enrutadores (¡Agregamos 'vistas' al final!)
+from app.routers import articulos, movimientos, lotes, reportes, proveedores, ordenes_compra, almacenes, auth, gobernanza, clientes, ventas, vistas
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -20,12 +18,8 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# 1. Exponer la carpeta static (para que lea el archivo kardex.js)
+# 1. Exponer la carpeta static (para que lea el CSS y JS del frontend)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
-
-# 2. Configurar el motor de plantillas (Jinja2 procesará los archivos .hbs)
-templates = Jinja2Templates(directory="app/templates")
-templates.env.cache = None
 
 @app.get("/")
 async def root():
@@ -35,39 +29,7 @@ async def root():
         "mensaje": "La API está en línea y conectada a MongoDB Atlas"
     }
 
-# 3. Ruta para renderizar la vista de la interfaz del Kardex
-@app.get("/kardex-view", tags=["Vistas"])
-async def ver_pantalla_kardex(request: Request):
-    """
-    Renderiza la interfaz de usuario del Kardex basada en Handlebars/Jinja2.
-    """
-    # Usamos argumentos por nombre (kwargs) para compatibilidad con las nuevas versiones
-    return templates.TemplateResponse(
-        request=request,
-        name="kardex.hbs", 
-        context={"request": request}
-    )
-
-# 4. Ruta para renderizar la vista del Radar de Alertas de Stock
-@app.get("/alertas-view", tags=["Vistas"])
-async def ver_pantalla_alertas(request: Request):
-    """
-    Renderiza la interfaz de usuario del panel de alertas basada en Handlebars/Jinja2.
-    """
-    return templates.TemplateResponse(
-        request=request,
-        name="alertas.hbs", 
-        context={"request": request}
-    )
-
-@app.get("/vencimientos-view", tags=["Vistas"])
-async def ver_pantalla_vencimientos(request: Request):
-    return templates.TemplateResponse(
-        request=request, 
-        name="vencimientos.hbs"
-    )
-
-# Conectamos las rutas de los módulos a la aplicación
+# 2. Conectamos las rutas de los módulos del Backend
 app.include_router(articulos.router)
 app.include_router(movimientos.router)
 app.include_router(lotes.router)
@@ -79,3 +41,6 @@ app.include_router(auth.router)
 app.include_router(gobernanza.router)
 app.include_router(clientes.router)
 app.include_router(ventas.router)
+
+# 3. Conectamos las rutas del Frontend
+app.include_router(vistas.router)

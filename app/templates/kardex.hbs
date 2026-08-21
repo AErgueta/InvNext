@@ -1,128 +1,157 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kardex de Artículo</title>
-    <style>
-        /* Estilos generales para que se vea limpio y profesional */
-        body { 
-            font-family: Arial, sans-serif; 
-            padding: 20px; 
-            color: #333;
-        }
-        
-        /* Contenedor de los filtros y botones */
-        .acciones-kardex { 
-            margin-bottom: 20px; 
-            padding: 15px; 
-            border: 1px solid #ccc; 
-            background-color: #f9f9f9; 
-            display: inline-block; 
-            border-radius: 5px;
-        }
-        
-        .acciones-kardex input, .acciones-kardex select, .acciones-kardex button { 
-            margin-right: 10px; 
-            padding: 8px; 
-        }
-        
-        button { 
-            cursor: pointer; 
-            background-color: #007bff; 
-            color: white; 
-            border: none; 
-            border-radius: 4px; 
-            font-weight: bold;
-        }
-        
-        button:disabled { 
-            background-color: #cccccc; 
-            cursor: not-allowed; 
-        }
+{% extends "layouts/main.hbs" %}
 
-        /* Estilos de la tabla */
-        table { 
-            width: 100%; 
-            margin-top: 20px; 
-            border-collapse: collapse; 
-            text-align: center; 
-        }
-        
-        th, td { 
-            border: 1px solid #ddd; 
-            padding: 10px; 
-        }
-        
-        th { 
-            background-color: #333; 
-            color: white; 
-        }
-        
-        /* Color cebra para las filas (opcional pero se ve genial) */
-        tbody tr:nth-child(even) { 
-            background-color: #f2f2f2; 
-        }
-    </style>
-</head>
-<body>
-
-<h2>Reporte Kardex Dinámico</h2>
-    
-    <div class="acciones-kardex">
-        <label for="input-sku"><strong>SKU del Artículo:</strong></label>
-        <input type="text" id="input-sku" placeholder="Ej. CINTA-EMB" style="width: 150px; margin-right: 20px;">
-
-        <!-- NUEVO: Selector de Almacén -->
-        <label for="filtro_almacen">Almacén:</label>
-        <select id="filtro_almacen">
-            <option value="">TODOS (Global)</option>
-            <option value="ALM-CENTRAL">ALM-CENTRAL</option>
-            <option value="SUC-01">SUC-01</option>
-        </select>
-
-        <label for="fecha-inicio">Desde:</label>
-        <input type="date" id="fecha-inicio">
-        
-        <label for="fecha-fin">Hasta:</label>
-        <input type="date" id="fecha-fin">
-        
-        <button id="btn-consultar-kardex" style="background-color: #28a745;">
-            🔍 Consultar
-        </button>
-
-        <button id="btn-descargar-kardex">
-            📥 Descargar CSV
+{% block contenido %}
+<div class="row mb-4 align-items-center">
+    <div class="col">
+        <h2 class="mb-0">Kardex de Inventario (Detalle por Artículo)</h2>
+        <p class="text-muted">Consulta movimientos, ingresos, egresos y saldos valorizados</p>
+    </div>
+    <!-- Botón para disparar el modal -->
+    <div class="col-auto">
+        <button class="btn btn-success shadow-sm" data-bs-toggle="modal" data-bs-target="#modalNuevoIngreso">
+            ➕ Nuevo Ingreso
         </button>
     </div>
+</div>
 
-    <!-- La tabla donde el JavaScript inyectará los datos -->
-    <table>
-        <thead>
-            <tr>
-                <th>Fecha</th>
-                <th>Concepto</th>
-                <th>Lote</th>
-                <th>Tipo</th>
-                <th>Costo U.</th>
-                <th>Ingreso</th>
-                <th>Egreso</th>
-                <th>Saldo (Físico)</th>
-                <th>Saldo (Valor)</th> <!-- NUEVA COLUMNA -->
-            </tr>
-        </thead>
-        <tbody id="cuerpo-tabla-kardex">
-            <tr>
-                <!-- Aumentamos el colspan a 9 para que ocupe todo el ancho -->
-                <td colspan="9" style="padding: 30px; color: #666; font-style: italic;">
-                    Haz clic en "Consultar en Pantalla" para cargar los movimientos.
-                </td>
-            </tr>
-        </tbody>
-    </table>
+<!-- Filtros de Consulta -->
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <div class="row g-3 align-items-end">
+            <div class="col-md-3">
+                <label for="input-sku" class="form-label">SKU del Artículo</label>
+                <input type="text" class="form-control" id="input-sku" placeholder="Ej. ART-001">
+            </div>
+            <div class="col-md-2">
+                <label for="fecha-inicio" class="form-label">Fecha Inicio</label>
+                <input type="date" class="form-control" id="fecha-inicio">
+            </div>
+            <div class="col-md-2">
+                <label for="fecha-fin" class="form-label">Fecha Fin</label>
+                <input type="date" class="form-control" id="fecha-fin">
+            </div>
+            <div class="col-md-2">
+                <label for="filtro_almacen" class="form-label">Almacén (Opcional)</label>
+                <input type="text" class="form-control" id="filtro_almacen" placeholder="Código">
+            </div>
+            <div class="col-md-3 d-flex gap-2">
+                <button class="btn btn-primary w-100" id="btn-consultar-kardex">Consultar</button>
+                <button class="btn btn-outline-success w-100" id="btn-descargar-kardex" title="Exportar CSV">Exportar</button>
+            </div>
+        </div>
+    </div>
+</div>
 
-    <!-- Nuestro script puente que le da vida a los botones -->
-    <script src="/static/js/kardex.js"></script>
+<!-- Tabla de Resultados -->
+<div class="card shadow-sm">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0" style="font-size: 0.9rem;">
+                <thead class="table-light">
+                    <tr>
+                        <th>Fecha / Hora</th>
+                        <th>Concepto</th>
+                        <th>Lote</th>
+                        <th>Tipo</th>
+                        <th>Costo Unit.</th>
+                        <th>Ingreso</th>
+                        <th>Egreso</th>
+                        <th>Saldo Cant.</th>
+                        <th>Saldo Dinero</th>
+                    </tr>
+                </thead>
+                <tbody id="cuerpo-tabla-kardex">
+                    <tr>
+                        <td colspan="9" class="text-center text-muted py-4">
+                            Ingresa un SKU y presiona "Consultar" para ver el kardex.
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
 
-</body>
-</html>
+<!-- ========================================== -->
+<!-- MODAL PARA NUEVO INGRESO MANUAL            -->
+<!-- ========================================== -->
+<div class="modal fade" id="modalNuevoIngreso" tabindex="-1" aria-labelledby="modalIngresoLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title" id="modalIngresoLabel">➕ Registrar Nuevo Ingreso</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="form-nuevo-ingreso">
+                    
+                    <!-- Sección 1: Logística -->
+                    <div class="p-3 mb-3 bg-light border rounded">
+                        <h6 class="text-success mb-3"><i class="bi bi-box-seam"></i> Datos Logísticos</h6>
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label class="form-label fw-bold">SKU del Artículo *</label>
+                                <input type="text" class="form-control" id="ingreso-sku" required placeholder="Ej. TIN-MAG">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-bold">Almacén Destino *</label>
+                                <input type="text" class="form-control" id="ingreso-almacen" required placeholder="Ej. ALM-CENTRAL">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-bold">Número de Lote</label>
+                                <input type="text" class="form-control" id="ingreso-lote" placeholder="Autogenerado si vacío">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Sección 2: Finanzas y Trazabilidad -->
+                    <div class="p-3 mb-3 border rounded">
+                        <h6 class="text-primary mb-3"><i class="bi bi-currency-dollar"></i> Finanzas y Trazabilidad</h6>
+                        <div class="row g-3 align-items-center">
+                            <div class="col-md-4">
+                                <label class="form-label fw-bold">Cantidad *</label>
+                                <input type="number" class="form-control" id="ingreso-cantidad" min="1" step="0.01" required>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-bold">Costo Unit. ($) *</label>
+                                <input type="number" class="form-control" id="ingreso-costo" min="0.01" step="0.01" required>
+                            </div>
+                            <div class="col-md-4 text-end mt-4">
+                                <span class="text-muted small d-block">Valor Total a Ingresar:</span>
+                                <span class="fs-5 fw-bold text-primary" id="ingreso-total-calculado">$0.00</span>
+                            </div>
+
+                            <!-- Flujo de Trabajo (Obligatorio y Manual) -->
+                            <div class="col-12 mt-3">
+                                <label class="form-label fw-bold">Flujo de Seguimiento *</label>
+                                <select class="form-select border-primary" id="ingreso-flujo" required>
+                                    <option value="" selected disabled>-- Selecciona la ruta de seguimiento --</option>
+                                    <option value="FLUJO-COMPRA-NACIONAL">Compra Nacional</option>
+                                    <option value="FLUJO-IMPORTACION">Importación</option>
+                                    <option value="FLUJO-AJUSTE-INV">Ajuste de Inventario</option>
+                                    <option value="FLUJO-DEVOLUCION">Devolución de Cliente</option>
+                                </select>
+                                <div class="form-text text-danger">Debe seleccionar explícitamente el flujo para este ingreso.</div>
+                            </div>
+
+                            <div class="col-12 mt-3">
+                                <label class="form-label">Concepto / Notas</label>
+                                <textarea class="form-control" id="ingreso-concepto" rows="2" placeholder="Motivo del ingreso..."></textarea>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="text-end">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-success px-4">Guardar Ingreso</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/kardex.js"></script>
+{% endblock %}

@@ -97,19 +97,28 @@ async def reporte_lotes_por_vencer(dias_limite: int = Query(default=30, descript
     """
     Devuelve los lotes activos (con stock > 0) cuya fecha de vencimiento esté dentro de los próximos N días.
     """
-    # Buscamos lotes con fecha_vencimiento no nula y con stock disponible
-    lotes = await Lote.find(
-        Lote.fecha_vencimiento != None,
-        Lote.cantidad_actual > 0
-    ).to_list()
+    # Buscamos lotes con stock > 0. 
+    lotes = await Lote.find(Lote.cantidad_actual > 0).to_list()
 
-    fecha_actual = datetime.now()
+    # Usamos zona horaria nula para evitar errores de resta con los ISODate de Mongo
+    fecha_actual = datetime.now().replace(tzinfo=None)
     lotes_en_riesgo = []
 
     for lote in lotes:
+        # Extraemos la fecha de forma segura por si el campo no existe en todos los lotes
+        fecha_vencimiento_raw = getattr(lote, "fecha_vencimiento", None)
+        
+        if not fecha_vencimiento_raw:
+            continue
+            
         try:
-            # Asumiendo formato YYYY-MM-DD
-            fecha_venc = datetime.strptime(lote.fecha_vencimiento, "%Y-%m-%d")
+            # Validamos si Mongo lo trajo como datetime (ISODate) o como texto
+            if isinstance(fecha_vencimiento_raw, datetime):
+                fecha_venc = fecha_vencimiento_raw.replace(tzinfo=None)
+            else:
+                # Cortamos a 10 caracteres por si trae horas en formato string
+                fecha_venc = datetime.strptime(str(fecha_vencimiento_raw)[:10], "%Y-%m-%d")
+
             dias_restantes = (fecha_venc - fecha_actual).days
 
             if dias_restantes <= dias_limite:
@@ -118,12 +127,13 @@ async def reporte_lotes_por_vencer(dias_limite: int = Query(default=30, descript
                     "numero_lote": lote.numero_lote,
                     "cantidad_actual": lote.cantidad_actual,
                     "costo_unitario": lote.costo_unitario,
-                    "fecha_vencimiento": lote.fecha_vencimiento,
+                    "fecha_vencimiento": fecha_venc.strftime("%Y-%m-%d"), # Estandarizamos texto limpio para el frontend
                     "dias_restantes": dias_restantes,
                     "estado": "VENCIDO" if dias_restantes < 0 else "POR_VENCER"
                 })
-        except (ValueError, TypeError):
-            # En caso de que la fecha tenga otro formato o esté mal formateada
+        except Exception as e:
+            # Si un lote tiene la fecha corrupta, lo saltamos en lugar de tumbar el servidor
+            print(f"Error procesando fecha del lote {lote.numero_lote}: {e}")
             continue
 
     # Ordenamos del más próximo a vencer al más lejano
@@ -134,6 +144,7 @@ async def reporte_lotes_por_vencer(dias_limite: int = Query(default=30, descript
         "total_lotes_en_riesgo": len(lotes_en_riesgo),
         "lotes": lotes_en_riesgo
     }
+
 
 @router.get("/stock-bajo", status_code=status.HTTP_200_OK)
 async def reporte_stock_bajo():
@@ -173,3 +184,54 @@ async def reporte_stock_bajo():
     alertas.sort(key=lambda x: x["diferencia_reorden"], reverse=True)
     
     return alertas
+
+# ==========================================
+# NUEVO ENDPOINT: RESUMEN DASHBOARD
+# ==========================================
+
+@router.get("/resumen-dashboard", status_code=status.HTTP_200_OK)
+async def obtener_resumen_dashboard():
+    """
+    Agrega la información clave para mostrar en la pantalla principal (Dashboard).
+    Devuelve los KPIs consolidados y la lista de los últimos movimientos.
+    """
+    # 1. Total de Artículos en el catálogo
+    total_articulos = await Articulo.count()
+
+    # 2. Valor del Inventario (Sumando: cantidad * costo de cada lote activo)
+    lotes_activos = await Lote.find(Lote.cantidad_actual > 0).to_list()
+    valor_inventario = sum((lote.cantidad_actual * lote.costo_unitario) for lote in lotes_activos)
+
+    # 3. Alertas de Stock Bajo (Reutilizamos la lógica rápida de validación)
+    articulos = await Articulo.find_all().to_list()
+    alertas_stock = 0
+    for art in articulos:
+        for stock_alm in art.stock_por_almacen:
+            if stock_alm.punto_reorden is not None and stock_alm.cantidad <= stock_alm.punto_reorden:
+                alertas_stock += 1
+
+    # 4. Movimientos Hoy
+    hoy_inicio = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    movimientos_hoy = await Movimiento.find(Movimiento.fecha_registro >= hoy_inicio).count()
+
+    # 5. Últimos 5 Movimientos para la tabla (Ordenados por fecha descendente)
+    ultimos_docs = await Movimiento.find_all().sort(-Movimiento.fecha_registro).limit(5).to_list()
+    
+    lista_movimientos = []
+    for mov in ultimos_docs:
+        lista_movimientos.append({
+            "tipo": mov.tipo_movimiento.value,
+            "articulo": mov.sku_articulo,
+            "cantidad": mov.cantidad,
+            "fecha": mov.fecha_registro.strftime("%Y-%m-%d %H:%M")
+        })
+
+    return {
+        "kpis": {
+            "total_articulos": total_articulos,
+            "valor_inventario": round(valor_inventario, 2),
+            "alertas_stock": alertas_stock,
+            "movimientos_hoy": movimientos_hoy
+        },
+        "ultimos_movimientos": lista_movimientos
+    }

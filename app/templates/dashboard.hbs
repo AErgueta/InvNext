@@ -1,0 +1,95 @@
+{% extends "layouts/main.hbs" %}
+
+{% block contenido %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>Dashboard General</h2>
+    <span class="text-muted" id="fecha-actual"></span>
+</div>
+
+<!-- Fila de Indicadores (KPIs) -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card shadow-sm text-white bg-primary">
+            <div class="card-body">
+                <h6 class="card-title">Total Artículos</h6>
+                <h2 class="mb-0" id="kpi-articulos">--</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card shadow-sm text-white bg-success">
+            <div class="card-body">
+                <h6 class="card-title">Valor del Inventario</h6>
+                <h2 class="mb-0" id="kpi-valor">$ --</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card shadow-sm text-dark bg-warning">
+            <div class="card-body">
+                <h6 class="card-title">Alertas de Stock Bajo</h6>
+                <h2 class="mb-0" id="kpi-alertas">--</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card shadow-sm text-white bg-info">
+            <div class="card-body">
+                <h6 class="card-title">Movimientos Hoy</h6>
+                <h2 class="mb-0" id="kpi-movimientos">--</h2>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Fila de Tablas Rápidas -->
+<div class="row">
+    <div class="col-md-8">
+        <div class="card shadow-sm">
+            <div class="card-header bg-white">
+                <h5 class="mb-0">Últimos Movimientos</h5>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Tipo</th>
+                                <th>Artículo</th>
+                                <th>Cantidad</th>
+                                <th>Usuario</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tabla-ultimos-mov">
+                            <tr><td colspan="4" class="text-center py-3 text-muted">Cargando datos...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card shadow-sm">
+            <div class="card-header bg-white">
+                <h5 class="mb-0">Accesos Directos</h5>
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <a href="/vistas/kardex" class="btn btn-outline-secondary text-start">📦 Ir al Kardex Completo</a>
+                    <button class="btn btn-outline-secondary text-start">➕ Nuevo Ingreso</button>
+                    <button class="btn btn-outline-secondary text-start">➖ Registrar Salida</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Un pequeño script visual para mostrar la fecha de hoy
+    document.getElementById('fecha-actual').textContent = new Date().toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+</script>
+<script src="/static/js/dashboard.js"></script>
+{% endblock %}

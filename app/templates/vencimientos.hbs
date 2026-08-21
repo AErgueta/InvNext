@@ -1,125 +1,58 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Panel de Vencimientos</title>
-    <style>
-        body { 
-            font-family: Arial, sans-serif; 
-            padding: 20px; 
-            color: #333;
-        }
-        
-        table { 
-            width: 100%; 
-            margin-top: 20px; 
-            border-collapse: collapse; 
-            text-align: center; 
-        }
-        
-        th, td { 
-            border: 1px solid #ddd; 
-            padding: 12px; 
-        }
-        
-        th { 
-            background-color: #2c3e50; 
-            color: white; 
-        }
+{% extends "layouts/main.hbs" %}
 
-        tbody tr:hover {
-            background-color: #f1f1f1;
-        }
-        
-        .badge {
-            padding: 6px 12px;
-            border-radius: 20px;
-            font-weight: bold;
-            color: white;
-            display: inline-block;
-        }
-
-        .badge-vencido {
-            background-color: #e74c3c; 
-            box-shadow: 0 0 8px rgba(231, 76, 60, 0.5);
-        }
-
-        .badge-por-vencer {
-            background-color: #f39c12; 
-        }
-        
-        .acciones-panel {
-            margin-bottom: 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .controles {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-        }
-
-        .controles label {
-            font-weight: bold;
-            color: #555;
-        }
-
-        .controles input {
-            padding: 8px;
-            width: 70px;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-            text-align: center;
-        }
-
-        button.btn-refrescar {
-            background-color: #007bff; 
-            color: white; 
-            border: none; 
-            border-radius: 4px; 
-            padding: 10px 15px;
-            font-weight: bold;
-            cursor: pointer;
-        }
-    </style>
-</head>
-<body>
-
-    <div class="acciones-panel">
-        <h2>Radar de Vencimientos</h2>
-        <div class="controles">
-            <label for="input-dias">Días de anticipación:</label>
-            <input type="number" id="input-dias" value="30" min="1">
-            <button id="btn-refrescar-vencimientos" class="btn-refrescar">
-                🔄 Actualizar Radar
+{% block contenido %}
+<!-- Encabezado y Filtros -->
+<div class="row mb-4 align-items-center">
+    <div class="col-md-6">
+        <h2 class="mb-0 text-warning" style="color: #d97706 !important;">
+            <i class="bi bi-calendar-x"></i> Control de Vencimientos
+        </h2>
+        <p class="text-muted">Monitoreo de lotes próximos a caducar (Estrategia FEFO).</p>
+    </div>
+    <div class="col-md-6 text-end">
+        <form id="form-filtro-vencimientos" class="d-inline-flex align-items-center gap-2">
+            <label for="input-dias" class="form-label mb-0 fw-bold text-nowrap">Mostrar próximos:</label>
+            <div class="input-group" style="width: 150px;">
+                <input type="number" class="form-control" id="input-dias" value="30" min="1" max="365">
+                <span class="input-group-text">días</span>
+            </div>
+            <button type="submit" class="btn btn-primary shadow-sm">
+                <i class="bi bi-search"></i> Filtrar
             </button>
+        </form>
+    </div>
+</div>
+
+<!-- Tabla de Vencimientos -->
+<div class="card shadow-sm border-0">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0" style="font-size: 0.95rem;">
+                <thead class="table-dark">
+                    <tr>
+                        <th class="text-start">SKU</th>
+                        <th class="text-start">Número de Lote</th>
+                        <th class="text-center">Stock Disponible</th>
+                        <th class="text-center">Costo Unit.</th>
+                        <th class="text-center">Fecha Vencimiento</th>
+                        <th class="text-center">Días Restantes</th>
+                        <th class="text-center">Estado</th>
+                    </tr>
+                </thead>
+                <tbody id="cuerpo-tabla-vencimientos">
+                    <tr>
+                        <td colspan="7" class="text-center py-5 text-muted">
+                            <div class="spinner-border spinner-border-sm text-secondary me-2" role="status"></div>
+                            Consultando lotes activos...
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
         </div>
     </div>
+</div>
+{% endblock %}
 
-    <table>
-        <thead>
-            <tr>
-                <th>SKU</th>
-                <th>Lote</th>
-                <th>Estado</th>
-                <th>Tiempo Restante</th>
-                <th>Fecha Límite</th>
-                <th>Stock Actual</th>
-                <th>Pérdida Potencial ($)</th>
-            </tr>
-        </thead>
-        <tbody id="cuerpo-tabla-vencimientos">
-            <tr>
-                <td colspan="7" style="padding: 30px; color: #666; font-style: italic;">
-                    Cargando lotes...
-                </td>
-            </tr>
-        </tbody>
-    </table>
-
-    <script src="/static/js/vencimientos.js"></script>
-</body>
-</html>
+{% block scripts %}
+<script src="/static/js/vencimientos.js"></script>
+{% endblock %}
