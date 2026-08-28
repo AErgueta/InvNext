@@ -11,6 +11,9 @@
         <button class="btn btn-success shadow-sm" data-bs-toggle="modal" data-bs-target="#modalNuevoIngreso">
             ➕ Nuevo Ingreso
         </button>
+        <button class="btn btn-danger ms-2" data-bs-toggle="modal" data-bs-target="#modalEgreso">
+            <i class="bi bi-box-arrow-right"></i> ➖ Nueva Salida
+        </button>
     </div>
 </div>
 
@@ -147,6 +150,71 @@
                     </div>
                 </form>
             </div>
+        </div>
+    </div>
+</div>
+<!-- ========================================== -->
+<!-- MODAL PARA NUEVO EGRESO MANUAL (FEFO)      -->
+<!-- ========================================== -->
+<div class="modal fade" id="modalEgreso" tabindex="-1" aria-labelledby="modalEgresoLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title" id="modalEgresoLabel"><i class="bi bi-box-arrow-right"></i> Registrar Salida de Inventario</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="form-egreso">
+                <div class="modal-body bg-light">
+                    
+                    <!-- Datos fijos (SKU y Almacén) -->
+                    <div class="row mb-3">
+                        <div class="col-6">
+                            <label class="form-label text-muted small mb-0">SKU Artículo</label>
+                            <input type="text" class="form-control fw-bold" id="egreso-sku" readonly>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label text-muted small mb-0">Almacén Origen</label>
+                            <input type="text" class="form-control fw-bold" id="egreso-almacen">
+                        </div>
+                    </div>
+
+                    <hr class="text-muted">
+
+                    <!-- SELECCIÓN OBLIGATORIA DEL FLUJO -->
+                    <div class="mb-3">
+                        <label class="form-label fw-bold text-dark">Flujo de Seguimiento <span class="text-danger">*</span></label>
+                        <select class="form-select border-danger" id="egreso-flujo" required>
+                            <!-- La opción por defecto está deshabilitada, forzando la elección manual -->
+                            <option value="" disabled selected>⚠️ Despliegue y elija un flujo de trabajo...</option>
+                            <option value="despacho_venta">Despacho por Venta</option>
+                            <option value="consumo_interno">Consumo Interno</option>
+                            <option value="control_calidad">Control de Calidad</option>
+                            <option value="baja_merma">Baja por Merma / Daño</option>
+                        </select>
+                        <div class="form-text text-danger small">Debe asignar manualmente la ruta de seguimiento.</div>
+                    </div>
+
+                    <!-- Cantidad a retirar -->
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Cantidad a retirar <span class="text-danger">*</span></label>
+                        <input type="number" class="form-control form-control-lg" id="egreso-cantidad" step="0.01" min="0.01" required placeholder="Ej. 15.5">
+                        <div class="form-text">El sistema descontará usando el método FEFO (primeros en vencer).</div>
+                    </div>
+
+                    <!-- Concepto libre -->
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Concepto / Notas <span class="text-danger">*</span></label>
+                        <textarea class="form-control" id="egreso-concepto" rows="2" required placeholder="Justificación de la salida..."></textarea>
+                    </div>
+
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-danger fw-bold" id="btn-procesar-egreso">
+                        <i class="bi bi-check2-circle"></i> Procesar Salida
+                    </button>
+                </div>
+            </form>
         </div>
     </div>
 </div>

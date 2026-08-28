@@ -81,6 +81,15 @@ class PeticionIngresoManual(BaseModel):
     flujo_trabajo_seleccionado: str = Field(..., description="Flujo de trabajo de seguimiento obligatorio")
     concepto: str = "Ingreso manual"
 
+class PeticionEgresoManual(BaseModel):
+    sku_articulo: str
+    codigo_almacen: str
+    tipo_movimiento: TipoMovimiento
+    cantidad: float = Field(..., gt=0, description="Cantidad total a retirar")
+    concepto: str = Field(..., description="Motivo de la salida")
+    flujo_trabajo_seleccionado: str = Field(..., description="El usuario debe elegir obligatoriamente su propio flujo de seguimiento")
+    id_referencia: Optional[str] = None
+
 # 4. Enrutador
 router = APIRouter(
     prefix="/movimientos",
@@ -183,6 +192,119 @@ async def registrar_ingreso_manual(
         "movimiento_id": str(nuevo_movimiento.id),
         "lote": lote_final,
         "estado": "PENDIENTE"
+    }
+
+@router.post("/egreso", status_code=status.HTTP_201_CREATED)
+async def registrar_egreso_manual(
+    peticion: PeticionEgresoManual,
+    usuario_actual: Usuario = Depends(obtener_usuario_actual)
+):
+    # --- 1. VALIDACIONES DE SEGURIDAD ---
+    if usuario_actual.rol == RolUsuario.OPERADOR:
+        if peticion.codigo_almacen != usuario_actual.codigo_almacen:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Acceso denegado: Solo puedes retirar mercancía de tu almacén asignado '{usuario_actual.codigo_almacen}'."
+            )
+
+    if peticion.tipo_movimiento not in [TipoMovimiento.SALIDA_VENTA, TipoMovimiento.SALIDA_PRODUCCION, TipoMovimiento.SALIDA_TRASPASO]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El tipo de movimiento debe corresponder a una salida."
+        )
+
+    articulo = await Articulo.find_one(Articulo.sku == peticion.sku_articulo)
+    if not articulo:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Artículo no encontrado.")
+        
+    stock_almacen = next((alm for alm in articulo.stock_por_almacen if alm.codigo_almacen == peticion.codigo_almacen), None)
+    if not stock_almacen or stock_almacen.cantidad < peticion.cantidad:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Stock físico insuficiente en el almacén {peticion.codigo_almacen}. Se solicitaron {peticion.cantidad} pero solo hay {stock_almacen.cantidad if stock_almacen else 0}."
+        )
+
+    # --- 2. EXTRACCIÓN Y ORDENAMIENTO FEFO ---
+    lotes_activos = await Lote.find(
+        Lote.sku_articulo == peticion.sku_articulo,
+        Lote.cantidad_actual > 0
+    ).to_list()
+    
+    lotes_validos_en_sucursal = []
+    for l in lotes_activos:
+        s_alm = next((sl for sl in l.stock_por_almacen if sl.codigo_almacen == peticion.codigo_almacen), None)
+        if s_alm and s_alm.cantidad > 0:
+            lotes_validos_en_sucursal.append((l, s_alm))
+
+    # Función segura para ordenar fechas (FEFO)
+    def obtener_fecha_orden(lote):
+        if not lote.fecha_vencimiento:
+            return datetime.max # Si no tiene vencimiento, va al final de la cola
+        if isinstance(lote.fecha_vencimiento, datetime):
+            return lote.fecha_vencimiento.replace(tzinfo=None)
+        try:
+            return datetime.strptime(str(lote.fecha_vencimiento)[:10], "%Y-%m-%d")
+        except:
+            return datetime.max
+
+    # Ordenamos: primero los que vencen más pronto
+    lotes_validos_en_sucursal.sort(key=lambda x: obtener_fecha_orden(x[0]))
+
+    # --- 3. DESCUENTO EN CASCADA ---
+    cantidad_restante = peticion.cantidad
+    movimientos_a_guardar = []
+    lotes_a_guardar = []
+    
+    for lote, stock_lote_alm in lotes_validos_en_sucursal:
+        if cantidad_restante <= 0:
+            break
+            
+        cantidad_a_tomar = min(stock_lote_alm.cantidad, cantidad_restante)
+        
+        # Descuento del lote
+        lote.cantidad_actual -= cantidad_a_tomar
+        stock_lote_alm.cantidad -= cantidad_a_tomar
+        lotes_a_guardar.append(lote) 
+        
+        precio_v = articulo.precio_venta if peticion.tipo_movimiento == TipoMovimiento.SALIDA_VENTA else None
+        
+        # Generación del movimiento individual asegurando el flujo elegido
+        nuevo_movimiento = Movimiento(
+            sku_articulo=articulo.sku,
+            codigo_almacen=peticion.codigo_almacen,
+            numero_lote=lote.numero_lote,
+            usuario=usuario_actual.username, 
+            tipo_movimiento=peticion.tipo_movimiento,
+            concepto=peticion.concepto,
+            cantidad=cantidad_a_tomar,
+            costo_unitario=lote.costo_unitario, 
+            precio_venta=precio_v,
+            flujo_trabajo_seleccionado=peticion.flujo_trabajo_seleccionado, # Control de destino manual
+            id_referencia=peticion.id_referencia,
+            estado="EJECUTADO"
+        )
+        
+        movimientos_a_guardar.append(nuevo_movimiento) 
+        cantidad_restante -= cantidad_a_tomar
+        
+    # Descuento global del artículo
+    articulo.stock_actual -= peticion.cantidad
+    stock_almacen.cantidad -= peticion.cantidad
+    
+    # --- 4. PERSISTENCIA EN BASE DE DATOS ---
+    for lote in lotes_a_guardar:
+        await lote.save()
+        
+    for mov in movimientos_a_guardar:
+        await mov.insert()
+        
+    await articulo.save()
+    
+    return {
+        "mensaje": "Salida manual completada bajo estrategia FEFO.",
+        "cantidad_total": peticion.cantidad,
+        "lotes_afectados": len(movimientos_a_guardar),
+        "detalle_movimientos": movimientos_a_guardar
     }
 
 @router.patch("/{movimiento_id}/ejecutar", status_code=status.HTTP_200_OK)

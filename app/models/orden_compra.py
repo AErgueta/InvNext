@@ -28,7 +28,7 @@ class OrdenCompra(Document):
     proveedor_id: str  
     
     # --- NUEVOS CAMPOS DE TRAZABILIDAD ---
-    usuario_creador: str  # Quién hizo la orden
+    usuario_creador: str = "sistema"  # Quién hizo la orden
     usuario_ultimo_receptor: Optional[str] = None  # Quién recibió (última vez)
     usuario_ultimo_pagador: Optional[str] = None   # Quién pagó (última vez)
     

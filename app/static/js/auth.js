@@ -1,4 +1,16 @@
 document.addEventListener('DOMContentLoaded', () => {
+    // --- NUEVO: GUARDIA DE SEGURIDAD ---
+    const token = localStorage.getItem('erp_token');
+    const rutaActual = window.location.pathname;
+
+    // Si NO hay token y la persona NO está en la página de login, bloqueamos
+    if (!token && !rutaActual.includes('/login')) {
+        alert("No está autenticado. Por favor, inicie sesión.");
+        window.location.href = '/vistas/login';
+        return; // Evita que se siga ejecutando el resto del script
+    }
+    // -----------------------------------
+
     const formLogin = document.getElementById('form-login');
     
     if (formLogin) {
@@ -7,7 +19,6 @@ document.addEventListener('DOMContentLoaded', () => {
             
             const username = document.getElementById('username').value;
             const password = document.getElementById('password').value;
-            const errorDiv = document.getElementById('login-error');
             
             // FastAPI OAuth2PasswordRequestForm exige los datos en formato URL-encoded, no JSON
             const formData = new URLSearchParams();

@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Union
 from enum import Enum
 from pydantic import BaseModel, Field
 from beanie import Document
@@ -50,7 +50,7 @@ class Venta(Document):
     saldo_pendiente: float = Field(default=0.0)
     
     estado: EstadoVenta = Field(default=EstadoVenta.PENDIENTE)
-    referencia_movimiento_id: Optional[str] = None
+    referencia_movimiento_id: Optional[Union[str, List[str]]] = None
 
     class Settings:
         name = "ventas"

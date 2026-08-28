@@ -32,7 +32,8 @@ class ItemRecepcion(BaseModel):
 
 class PeticionRecepcion(BaseModel):
     codigo_almacen: str  # <--- Agregado para saber en qué sucursal ingresa la mercancía
-    id_referencia: str  
+    id_referencia: str 
+    flujo_trabajo_seleccionado: str = Field(..., description="Flujo de trabajo de seguimiento obligatorio") 
     items_recibidos: List[ItemRecepcion]
 
 class PeticionPago(BaseModel):
@@ -112,7 +113,7 @@ async def recibir_orden(
         # 1. Gestión de Lotes y Asignación de Stock Físico
         if articulo.controla_lotes:
             timestamp = datetime.now(ZoneInfo("America/La_Paz")).strftime("%d%H%M")
-            numero_lote = f"L-OC-{numero_orden}-{timestamp}"
+            numero_lote = f"L-OC-{numero_orden}-{item_recibido.sku_articulo}-{timestamp}"
             
             nuevo_lote = Lote(
                 sku_articulo=item_recibido.sku_articulo,
@@ -170,7 +171,8 @@ async def recibir_orden(
             concepto=f"Recepción de OC {numero_orden}",
             cantidad=item_recibido.cantidad_a_recibir,
             costo_unitario=item_orden.costo_unitario_estimado,
-            id_referencia=peticion.id_referencia
+            id_referencia=peticion.id_referencia,
+            flujo_trabajo_seleccionado=peticion.flujo_trabajo_seleccionado
         )
         await nuevo_movimiento.insert()
         movimientos_generados.append(nuevo_movimiento)

@@ -106,7 +106,8 @@ async def registrar_venta(
         ids_movimientos.append(str(mov.id))
         
     if ids_movimientos:
-        await nueva_venta.update({"$set": {"referencia_movimiento_id": ",".join(ids_movimientos)}})
+        #await nueva_venta.update({"$set": {"referencia_movimiento_id": ",".join(ids_movimientos)}})
+        await nueva_venta.update({"$set": {"referencia_movimiento_id": ids_movimientos}})
         
     return {
         "mensaje": "Orden de venta registrada exitosamente.",
@@ -145,9 +146,15 @@ async def despachar_venta(
         )
 
     # 0. BÚSQUEDA INFALIBLE DE MOVIMIENTOS POR ID (Nativo de MongoDB)
-    ids_strings = [id_str.strip() for id_str in venta.referencia_movimiento_id.split(",") if id_str.strip()]
+    #----------------------
+    if isinstance(venta.referencia_movimiento_id, list):
+        ids_strings = venta.referencia_movimiento_id
+    else:
+        ids_strings = [id_str.strip() for id_str in venta.referencia_movimiento_id.split(",") if id_str.strip()]
+        
     ids_objetos = [PydanticObjectId(id_str) for id_str in ids_strings]
-    
+    #----------------------
+
     movimientos_venta = await Movimiento.find({"_id": {"$in": ids_objetos}}).to_list()
     
     if not movimientos_venta:
@@ -177,7 +184,7 @@ async def despachar_venta(
         lotes_disponibles = await Lote.find(
             Lote.sku_articulo == mov.sku_articulo,
             Lote.cantidad_actual > 0
-        ).sort("+_id").to_list()
+        ).sort("+fecha_vencimiento").to_list()
         
         cantidad_restante = mov.cantidad
         lotes_utilizados = []
@@ -238,6 +245,10 @@ async def despachar_venta(
         
         if venta.estado == EstadoVenta.PENDIENTE:
             venta.estado = EstadoVenta.POR_COBRAR
+    else:
+    # --- NUEVO: Si es AL CONTADO, la venta pasa a pagada ---
+        if venta.estado == EstadoVenta.PENDIENTE:
+            venta.estado = EstadoVenta.PAGADA
         
     # 3. ZONA SEGURA: ESCRITURA EN BASE DE DATOS
     await venta.save()
@@ -365,7 +376,11 @@ async def anular_venta(
     await venta.save()
     
     # Buscar usando sintaxis nativa de MongoDB para evitar falsos positivos
-    ids_strings = [id_str.strip() for id_str in venta.referencia_movimiento_id.split(",") if id_str.strip()]
+    if isinstance(venta.referencia_movimiento_id, list):
+        ids_strings = venta.referencia_movimiento_id
+    else:
+        ids_strings = [id_str.strip() for id_str in venta.referencia_movimiento_id.split(",") if id_str.strip()]
+        
     ids_objetos = [PydanticObjectId(id_str) for id_str in ids_strings]
     
     movimientos_venta = await Movimiento.find({"_id": {"$in": ids_objetos}}).to_list()

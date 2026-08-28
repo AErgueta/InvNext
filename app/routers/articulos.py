@@ -291,3 +291,29 @@ async def buscar_por_codigo_barras(codigo: str):
         )
         
     return articulo
+
+@router.get("/buscar/{termino}", status_code=status.HTTP_200_OK)
+async def buscar_articulo_pos(termino: str):
+    """
+    Busca artículos para el Punto de Venta usando Regex (Coincidencia parcial).
+    Busca tanto por SKU como por Nombre, sin diferenciar mayúsculas/minúsculas.
+    """
+    # Buscamos usando una expresión regular sencilla
+    # $regex: termino, $options: 'i' (case-insensitive)
+    query = {
+        "$or": [
+            {"sku": {"$regex": termino, "$options": "i"}},
+            {"nombre": {"$regex": termino, "$options": "i"}}
+        ]
+    }
+    
+    # Limitamos a 10 resultados para que la respuesta sea instantánea en caja
+    resultados = await Articulo.find(query).limit(10).to_list()
+    
+    if not resultados:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No se encontraron artículos con ese término."
+        )
+        
+    return resultados

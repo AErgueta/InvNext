@@ -1,0 +1,91 @@
+{% extends "layouts/main.hbs" %}
+
+{% block contenido %}
+<div class="row mb-4">
+    <div class="col">
+        <h2 class="text-primary"><i class="bi bi-truck"></i> Recepción de Orden de Compra</h2>
+        <p class="text-muted">Ingresa el número de orden para procesar la entrada masiva de artículos.</p>
+    </div>
+</div>
+
+<!-- Buscador de la OC -->
+<div class="card shadow-sm border-0 mb-4">
+    <div class="card-body">
+        <div class="row g-3 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label fw-bold">Número de OC</label>
+                <input type="text" class="form-control text-uppercase" id="input-busqueda-oc" placeholder="Ej. OC-2026-001">
+            </div>
+            <div class="col-md-2">
+                <button class="btn btn-primary w-100" id="btn-buscar-oc">Buscar Orden</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Contenedor principal de la Recepción (Oculto hasta buscar) -->
+<div id="contenedor-recepcion" class="d-none">
+    <div class="row">
+        <!-- Panel Izquierdo: Controles de Recepción -->
+        <div class="col-md-4">
+            <div class="card shadow-sm border-0 mb-4">
+                <div class="card-header bg-white py-3">
+                    <h5 class="mb-0 fw-bold">Datos de Ingreso</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Almacén Destino <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control text-uppercase" id="recepcion-almacen" value="ALM-CENTRAL">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Flujo de Seguimiento <span class="text-danger">*</span></label>
+                        <select class="form-select border-danger" id="recepcion-flujo" required>
+                            <option value="" disabled selected>⚠️ Elija una ruta...</option>
+                            <option value="ingreso_stock">Ingreso a Stock General</option>
+                            <option value="cuarentena">Cuarentena / Revisión</option>
+                            <option value="transito">Tránsito a Sucursal</option>
+                        </select>
+                        <div class="form-text text-danger small">Debe asignar manualmente la ruta.</div>
+                    </div>
+                    
+                    <button class="btn btn-success w-100 fw-bold py-2" id="btn-procesar-recepcion">
+                        <i class="bi bi-check2-all"></i> Procesar Recepción Completa
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Panel Derecho: Tabla Dinámica de Artículos -->
+        <div class="col-md-8">
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0 fw-bold">Artículos en la Orden</h5>
+                    <span class="badge bg-secondary" id="badge-estado-oc">PENDIENTE</span>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>SKU</th>
+                                    <th class="text-center">Solicitado</th>
+                                    <th class="text-center">Ya Recibido</th>
+                                    <th class="text-center" style="width: 150px;">A Recibir Ahora</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tabla-items-oc">
+                                <!-- Las filas se inyectarán con JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/recepcion_oc.js"></script>
+{% endblock %}

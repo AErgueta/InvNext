@@ -301,3 +301,109 @@ if (formIngreso) {
         }
     });
 }
+
+// ==========================================
+// UX DEL MODAL: EGRESO MANUAL (FEFO)
+// ==========================================
+document.addEventListener('DOMContentLoaded', () => {
+    const modalEgresoEl = document.getElementById('modalEgreso');
+    
+    if (modalEgresoEl) {
+        // Autocompletar datos al abrir el modal (igual que en el ingreso)
+        modalEgresoEl.addEventListener('show.bs.modal', () => {
+            const skuActual = document.getElementById('input-sku').value.trim();
+            const almacenActual = document.getElementById('filtro_almacen').value.trim();
+            
+            const inputModalSku = document.getElementById('egreso-sku');
+            const inputModalAlmacen = document.getElementById('egreso-almacen');
+            
+            if (skuActual && inputModalSku) {
+                inputModalSku.value = skuActual;
+                inputModalSku.style.backgroundColor = '#e9ecef'; 
+            }
+            
+            if (almacenActual && inputModalAlmacen) {
+                inputModalAlmacen.value = almacenActual || 'ALM-CENTRAL';
+            }
+        });
+
+        // Limpiar el formulario al cerrar
+        modalEgresoEl.addEventListener('hidden.bs.modal', () => {
+            const form = document.getElementById('form-egreso');
+            if (form) form.reset();
+        });
+    }
+});
+
+// ==========================================
+// Lógica para Procesar el Egreso Manual
+// ==========================================
+const formEgreso = document.getElementById('form-egreso');
+
+if (formEgreso) {
+    formEgreso.addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const btnProcesar = document.getElementById('btn-procesar-egreso');
+        btnProcesar.disabled = true;
+        btnProcesar.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Procesando...';
+
+        // 1. Recolectar datos
+        const sku = document.getElementById('egreso-sku').value;
+        const almacen = document.getElementById('egreso-almacen').value;
+        const flujoSeleccionado = document.getElementById('egreso-flujo').value;
+        const cantidad = parseFloat(document.getElementById('egreso-cantidad').value);
+        const concepto = document.getElementById('egreso-concepto').value;
+
+        // 2. Mapear el flujo elegido a un TipoMovimiento válido para el backend
+        let tipoMovimiento = "OUT_SALE"; // Despacho por venta por defecto
+        if (flujoSeleccionado === "consumo_interno" || flujoSeleccionado === "baja_merma" || flujoSeleccionado === "control_calidad") {
+            tipoMovimiento = "OUT_PROD"; 
+        }
+
+        const payload = {
+            sku_articulo: sku,
+            codigo_almacen: almacen,
+            tipo_movimiento: tipoMovimiento,
+            cantidad: cantidad,
+            concepto: concepto,
+            flujo_trabajo_seleccionado: flujoSeleccionado
+        };
+
+        try {
+            const token = obtenerToken();
+            if (!token) return;
+
+            const response = await fetch('/movimientos/egreso', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify(payload)
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                alert(`✅ ${data.mensaje}\nLotes afectados en cascada: ${data.lotes_afectados}`);
+                
+                // Ocultar modal usando Bootstrap nativo
+                const modalInstance = bootstrap.Modal.getInstance(document.getElementById('modalEgreso'));
+                modalInstance.hide();
+                
+                // Hacer clic virtual en el botón de consultar para recargar la tabla
+                document.getElementById('btn-consultar-kardex').click();
+            } else {
+                alert(`❌ Error: ${data.detail || 'No se pudo procesar la salida'}`);
+            }
+        } catch (error) {
+            console.error("Error en la petición:", error);
+            alert("Ocurrió un error de conexión con el servidor.");
+        } finally {
+            // Restaurar el botón a su estado original
+            btnProcesar.disabled = false;
+            btnProcesar.innerHTML = '<i class="bi bi-check2-circle"></i> Procesar Salida';
+        }
+    });
+}

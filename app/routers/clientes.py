@@ -1,6 +1,7 @@
 from typing import Optional, List
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
+from bson import ObjectId
 
 from app.models.cliente import Cliente
 
@@ -76,3 +77,4 @@ async def listar_clientes():
     """
     clientes = await Cliente.find_all().to_list()
     return clientes
+

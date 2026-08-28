@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, Depends
 from fastapi.templating import Jinja2Templates
 
 # Creamos el enrutador específico para las pantallas
@@ -51,4 +51,39 @@ async def render_dashboard(request: Request):
         request=request,
         name="dashboard.hbs", 
         context={"mostrar_menu": True}
+    )
+
+from fastapi import Request
+
+@router.get("/recepcion-oc")
+async def vista_recepcion_oc(request: Request):
+    # Nombramos explícitamente request y name para evitar confusiones de versión
+    return templates.TemplateResponse(
+        request=request, 
+        name="recepcion_oc.hbs"
+    )
+
+@router.get("/crear-oc")
+async def vista_crear_oc(request: Request):
+    # Nombramos explícitamente request y name para evitar confusiones de versión
+    return templates.TemplateResponse(
+        request=request, 
+        name="crear_oc.hbs"
+    )
+
+@router.get("/pagar-oc")
+async def vista_pagar_oc(request: Request):
+    return templates.TemplateResponse(
+        request=request, 
+        name="pagar_oc.hbs"
+    )
+
+@router.get("/pos")
+async def mostrar_pos(request: Request):
+    """
+    Renderiza la vista del Punto de Venta (POS).
+    """
+    return templates.TemplateResponse(
+        request=request, 
+        name="pos.hbs"
     )
