@@ -284,7 +284,16 @@ btnCobrar.addEventListener('click', async () => {
 
         // ¡ÉXITO!
         reproducirBeep(true); // Opcional: Sonido de éxito
-        alert(`¡Venta procesada exitosamente!\nFolio: ${dataVenta.folio}`);
+
+        // --- AQUÍ PEGAS LA LLAMADA AL TICKET ---
+        imprimirTicket(
+            dataVenta.folio,
+            document.getElementById('pos-cliente').value,
+            document.getElementById('pos-documento').value,
+            carrito,
+            parseFloat(inputDescuento.value) || 0
+        );
+        // ---------------------------------------
         
         // Limpiar el mostrador para el siguiente cliente
         carrito = [];
@@ -292,6 +301,7 @@ btnCobrar.addEventListener('click', async () => {
         document.getElementById('pos-cliente').value = "Cliente Mostrador";
         document.getElementById('pos-documento').value = "S/N";
         selectFlujo.value = "";
+        inputDescuento.value = "0";
         
     } catch (error) {
         reproducirBeep(false); // Opcional: Sonido de error
@@ -335,3 +345,108 @@ inputDocumento.addEventListener('change', async (e) => {
         inputCliente.value = "";
     }
 });
+
+// ==========================================
+// MÓDULO DE IMPRESIÓN DE TICKET
+// ==========================================
+function imprimirTicket(folio, cliente, documento, carrito, descuentoGlobal) {
+    const subtotal = carrito.reduce((acc, item) => acc + item.subtotal_linea, 0);
+    const total = subtotal - descuentoGlobal;
+    
+    // Abrimos una ventana emergente oculta/pequeña
+    const ventana = window.open('', '_blank', 'width=400,height=600');
+    
+    // Construimos las filas de los productos
+    let filasHTML = '';
+    carrito.forEach(item => {
+        filasHTML += `
+            <tr>
+                <td style="vertical-align: top;">${item.cantidad}</td>
+                <td>${item.nombre_articulo}<br><small>${item.sku_articulo}</small></td>
+                <td style="text-align: right; vertical-align: top;">${formatearMoneda(item.subtotal_linea)}</td>
+            </tr>
+        `;
+    });
+
+    // Diseño del ticket (optimizado para impresoras térmicas)
+    const html = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Ticket ${folio}</title>
+            <style>
+                body { 
+                    font-family: 'Courier New', Courier, monospace; 
+                    font-size: 12px; 
+                    margin: 0; 
+                    padding: 10px; 
+                    width: 100%; 
+                    max-width: 300px; /* Ancho típico de impresora térmica */
+                }
+                .center { text-align: center; }
+                .right { text-align: right; }
+                table { width: 100%; border-collapse: collapse; margin: 10px 0; }
+                th, td { padding: 4px 0; border-bottom: 1px dashed #ddd; }
+                th { border-bottom: 1px dashed #000; border-top: 1px dashed #000; }
+                .fw-bold { font-weight: bold; }
+                .totales { margin-top: 10px; border-top: 2px solid #000; padding-top: 10px; }
+                @media print {
+                    @page { margin: 0; }
+                    body { margin: 1cm; }
+                }
+            </style>
+        </head>
+        <body>
+            <div class="center">
+                <h2>MI EMPRESA</h2>
+                <p>Santa Cruz de la Sierra, Bolivia</p>
+                <p>NIT: 1234567015</p>
+                <p>--------------------------------</p>
+                <h3>TICKET DE VENTA</h3>
+                <p class="fw-bold">Folio: ${folio}</p>
+            </div>
+            
+            <p>
+                <strong>Cliente:</strong> ${cliente}<br>
+                <strong>NIT/CI:</strong> ${documento}<br>
+                <strong>Fecha:</strong> ${new Date().toLocaleString('es-BO')}
+            </p>
+            
+            <table>
+                <thead>
+                    <tr>
+                        <th style="text-align: left; width: 15%;">Cant</th>
+                        <th style="text-align: left; width: 55%;">Descripción</th>
+                        <th style="text-align: right; width: 30%;">Subtotal</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${filasHTML}
+                </tbody>
+            </table>
+            
+            <div class="totales right">
+                <p>Subtotal: Bs. ${formatearMoneda(subtotal)}</p>
+                <p>Descuento: Bs. ${formatearMoneda(descuentoGlobal)}</p>
+                <h3 style="margin: 5px 0;">TOTAL: Bs. ${formatearMoneda(total)}</h3>
+            </div>
+            
+            <div class="center" style="margin-top: 20px;">
+                <p>¡Gracias por su compra!</p>
+                <p>***</p>
+            </div>
+            
+            <script>
+                // Dispara la ventana de impresión y luego se cierra sola
+                window.onload = function() { 
+                    window.print(); 
+                    setTimeout(() => window.close(), 500);
+                }
+            </script>
+        </body>
+        </html>
+    `;
+    
+    ventana.document.write(html);
+    ventana.document.close();
+}

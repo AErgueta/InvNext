@@ -1,0 +1,70 @@
+{% extends "layouts/main.hbs" %}
+
+{% block contenido %}
+<div class="row mb-4">
+    <div class="col">
+        <h2 class="text-primary"><i class="bi bi-clipboard2-check"></i> Conteo Físico de Inventario</h2>
+        <p class="text-muted">Registra la cantidad real encontrada en el estante. El sistema calculará y ajustará la diferencia automáticamente.</p>
+    </div>
+</div>
+
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card shadow-sm border-0">
+            <div class="card-header bg-white py-3">
+                <h5 class="mb-0 fw-bold">Formulario de Auditoría</h5>
+            </div>
+            <div class="card-body">
+                <form id="form-ajuste-fisico">
+                    
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">SKU del Artículo <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control text-uppercase" id="ajuste-sku" placeholder="Ej. TINTA-NEGRA-01" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">Almacén <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control text-uppercase" id="ajuste-almacen" value="ALM-CENTRAL" required>
+                        </div>
+                    </div>
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">Número de Lote</label>
+                            <input type="text" class="form-control text-uppercase" id="ajuste-lote" placeholder="Dejar vacío si no aplica">
+                            <div class="form-text small">Obligatorio solo si el artículo controla lotes.</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold text-primary">Cantidad Física Encontrada <span class="text-danger">*</span></label>
+                            <input type="number" class="form-control border-primary" id="ajuste-cantidad" min="0" step="0.01" placeholder="¿Cuánto hay realmente?" required>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Flujo de Seguimiento <span class="text-danger">*</span></label>
+                        <select class="form-select border-danger" id="ajuste-flujo" required>
+                            <option value="" disabled selected>⚠️ Elija una ruta obligatoriamente...</option>
+                            <option value="auditoria_mensual">Auditoría Mensual / Anual</option>
+                            <option value="correccion_merma">Corrección por Merma / Daño</option>
+                            <option value="ingreso_sobrante">Ingreso por Sobrante Físico</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="form-label fw-bold">Concepto / Notas <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="ajuste-concepto" placeholder="Ej. Conteo cíclico de pasillo 4" required>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary w-100 fw-bold py-2" id="btn-procesar-ajuste">
+                        <i class="bi bi-save"></i> Registrar Conteo y Ajustar Stock
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/ajuste_fisico.js"></script>
+{% endblock %}

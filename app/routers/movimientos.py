@@ -90,6 +90,14 @@ class PeticionEgresoManual(BaseModel):
     flujo_trabajo_seleccionado: str = Field(..., description="El usuario debe elegir obligatoriamente su propio flujo de seguimiento")
     id_referencia: Optional[str] = None
 
+class PeticionAjusteFisico(BaseModel):
+    sku_articulo: str
+    codigo_almacen: str
+    cantidad_encontrada: float = Field(..., ge=0, description="La cantidad física real que el usuario contó en el estante")
+    concepto: str = Field(..., description="Motivo (ej. 'Auditoría mensual')")
+    flujo_trabajo_seleccionado: str = Field(..., description="El usuario debe elegir obligatoriamente su flujo")
+    numero_lote: Optional[str] = None
+
 # 4. Enrutador
 router = APIRouter(
     prefix="/movimientos",
@@ -815,3 +823,91 @@ async def registrar_ajuste_costo(
     await movimiento.insert()
 
     return movimiento
+
+@router.post("/ajuste-fisico", status_code=status.HTTP_201_CREATED)
+async def registrar_ajuste_fisico(
+        peticion: PeticionAjusteFisico,
+        usuario_actual: Usuario = Depends(obtener_usuario_actual)
+):
+    """Registra el conteo físico de un artículo y ajusta la diferencia automáticamente."""
+    
+    # 1. Seguridad
+    if usuario_actual.rol != RolUsuario.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo los administradores pueden registrar ajustes por conteo físico."
+        )
+
+    articulo = await Articulo.find_one(Articulo.sku == peticion.sku_articulo)
+    if not articulo:
+        raise HTTPException(status_code=404, detail="Artículo no encontrado.")
+
+    diferencia = 0.0
+    costo_para_movimiento = getattr(articulo, "costo_unitario", 0.0)
+
+    # 2. Lógica de cálculo de diferencias (Con o sin lotes)
+    if articulo.controla_lotes:
+        if not peticion.numero_lote:
+            raise HTTPException(status_code=400, detail="El artículo controla lotes. Debes especificar el número de lote.")
+            
+        lote = await Lote.find_one(Lote.numero_lote == peticion.numero_lote, Lote.sku_articulo == peticion.sku_articulo)
+        if not lote:
+            raise HTTPException(status_code=404, detail="Lote no encontrado.")
+            
+        stock_lote_alm = next((sl for sl in lote.stock_por_almacen if sl.codigo_almacen == peticion.codigo_almacen), None)
+        
+        if stock_lote_alm:
+            diferencia = peticion.cantidad_encontrada - stock_lote_alm.cantidad
+            stock_lote_alm.cantidad = peticion.cantidad_encontrada
+        else:
+            diferencia = peticion.cantidad_encontrada
+            lote.stock_por_almacen.append(StockLoteAlmacen(codigo_almacen=peticion.codigo_almacen, cantidad=peticion.cantidad_encontrada))
+            
+        lote.cantidad_actual += diferencia
+        costo_para_movimiento = lote.costo_unitario
+        await lote.save()
+        
+    else:
+        # Si es un artículo de stock perpetuo (sin lotes)
+        stock_almacen = next((alm for alm in articulo.stock_por_almacen if alm.codigo_almacen == peticion.codigo_almacen), None)
+        
+        if stock_almacen:
+            diferencia = peticion.cantidad_encontrada - stock_almacen.cantidad
+            stock_almacen.cantidad = peticion.cantidad_encontrada
+        else:
+            diferencia = peticion.cantidad_encontrada
+            articulo.stock_por_almacen.append(StockAlmacen(codigo_almacen=peticion.codigo_almacen, cantidad=peticion.cantidad_encontrada))
+
+    # 3. Aplicamos la diferencia al stock global del artículo
+    articulo.stock_actual += diferencia
+    await articulo.save()
+
+    # 4. Registramos en el Kardex SOLO si hubo una diferencia real
+    movimiento_id = None
+    if diferencia != 0:
+        # Si la diferencia es positiva es una ENTRADA, si es negativa es una SALIDA.
+        # Asignamos el tipo de movimiento correcto para que tu Kardex sume/reste bien.
+        tipo_mov = TipoMovimiento.ENTRADA if diferencia > 0 else TipoMovimiento.SALIDA_PRODUCCION
+        
+        concepto_detallado = f"{peticion.concepto} (Conteo: {peticion.cantidad_encontrada}. Ajuste de {diferencia:+.2f})"
+        
+        nuevo_movimiento = Movimiento(
+            sku_articulo=peticion.sku_articulo,
+            codigo_almacen=peticion.codigo_almacen,
+            numero_lote=peticion.numero_lote,
+            usuario=usuario_actual.username,
+            tipo_movimiento=tipo_mov,
+            concepto=concepto_detallado,
+            cantidad=abs(diferencia), # En el Kardex la cantidad se guarda en positivo
+            costo_unitario=costo_para_movimiento,
+            flujo_trabajo_seleccionado=peticion.flujo_trabajo_seleccionado,
+            estado="EJECUTADO"
+        )
+        await nuevo_movimiento.insert()
+        movimiento_id = str(nuevo_movimiento.id)
+
+    return {
+        "mensaje": f"Conteo físico procesado correctamente. Diferencia detectada: {diferencia:+.2f}",
+        "diferencia": diferencia,
+        "movimiento_generado": movimiento_id
+    }

@@ -77,15 +77,20 @@ function renderizarDetalleOrden(orden) {
             <td class="text-center">${item.cantidad_solicitada}</td>
             <td class="text-center text-muted">${item.cantidad_recibida}</td>
             <td class="text-center">
+                <input type="number" class="form-control form-control-sm text-end input-costo" 
+                       data-sku="${item.sku_articulo}" value="${item.costo_unitario || 0}" min="0" step="0.01" ${disabled}>
+            </td>
+            <td class="text-center">
+                <input type="date" class="form-control form-control-sm input-vencimiento" 
+                       data-sku="${item.sku_articulo}" ${disabled}>
+            </td>
+            <td class="text-center">
                 <input type="number" 
                        class="form-control form-control-sm text-center input-a-recibir" 
                        data-sku="${item.sku_articulo}"
                        data-max="${pendiente}"
                        value="${pendiente > 0 ? pendiente : 0}" 
-                       min="0" 
-                       max="${pendiente}" 
-                       step="0.01" 
-                       ${disabled}>
+                       min="0" max="${pendiente}" step="0.01" ${disabled}>
             </td>
         `;
         tbody.appendChild(fila);
@@ -121,6 +126,7 @@ async function procesarRecepcionMasiva() {
 
     const inputs = document.querySelectorAll('.input-a-recibir');
     const itemsARecibir = [];
+    let errorValidacion = false;
 
     inputs.forEach(input => {
         const cant = parseFloat(input.value) || 0;
@@ -129,17 +135,39 @@ async function procesarRecepcionMasiva() {
 
         if (cant > max) {
             alert(`La cantidad a recibir para ${sku} excede el saldo pendiente (${max}).`);
+            errorValidacion = true;
             return;
         }
 
         if (cant > 0) {
+            // Buscamos los valores de costo y vencimiento usando el SKU como ancla
+            const inputCosto = document.querySelector(`.input-costo[data-sku="${sku}"]`);
+            const inputVencimiento = document.querySelector(`.input-vencimiento[data-sku="${sku}"]`);
+            
+            const costo = parseFloat(inputCosto.value) || 0;
+            const vencimiento = inputVencimiento.value;
+
+            if (!vencimiento) {
+                alert(`Debe ingresar la fecha de vencimiento para el SKU ${sku}.`);
+                errorValidacion = true;
+                return;
+            }
+
             itemsARecibir.push({
                 sku_articulo: sku,
-                cantidad_a_recibir: cant
+                cantidad_a_recibir: cant,
+                costo_unitario: costo,
+                fecha_vencimiento: vencimiento
             });
         }
     });
 
+    if (errorValidacion) return;
+
+    if (itemsARecibir.length === 0) {
+        alert("Debe ingresar al menos una cantidad mayor a 0 para procesar la recepción.");
+        return;
+    }
     if (itemsARecibir.length === 0) {
         alert("Debe ingresar al menos una cantidad mayor a 0 para procesar la recepción.");
         return;

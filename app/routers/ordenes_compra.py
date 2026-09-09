@@ -29,6 +29,8 @@ class PeticionNuevaOrden(BaseModel):
 class ItemRecepcion(BaseModel):
     sku_articulo: str
     cantidad_a_recibir: float
+    costo_unitario: float        # <--- AÑADIDO: El costo real de ingreso
+    fecha_vencimiento: Optional[datetime] = None  # <--- Opcional con valor por defecto None
 
 class PeticionRecepcion(BaseModel):
     codigo_almacen: str  # <--- Agregado para saber en qué sucursal ingresa la mercancía
@@ -120,7 +122,8 @@ async def recibir_orden(
                 numero_lote=numero_lote,
                 cantidad_inicial=item_recibido.cantidad_a_recibir,
                 cantidad_actual=item_recibido.cantidad_a_recibir,
-                costo_unitario=item_orden.costo_unitario_estimado,
+                costo_unitario=item_recibido.costo_unitario,       # <--- ACTUALIZADO
+                fecha_vencimiento=item_recibido.fecha_vencimiento, # <--- NUEVO
                 stock_por_almacen=[StockLoteAlmacen(codigo_almacen=peticion.codigo_almacen, cantidad=item_recibido.cantidad_a_recibir)]
             )
             await nuevo_lote.insert()
@@ -145,11 +148,11 @@ async def recibir_orden(
                     numero_lote=numero_lote,
                     cantidad_inicial=item_recibido.cantidad_a_recibir,
                     cantidad_actual=item_recibido.cantidad_a_recibir,
-                    costo_unitario=item_orden.costo_unitario_estimado,
+                    costo_unitario=item_recibido.costo_unitario,       # <--- ACTUALIZADO
+                    fecha_vencimiento=item_recibido.fecha_vencimiento, # <--- NUEVO
                     stock_por_almacen=[StockLoteAlmacen(codigo_almacen=peticion.codigo_almacen, cantidad=item_recibido.cantidad_a_recibir)]
                 )
                 await nuevo_lote_perpetuo.insert()
-
         # 2. Actualizamos stock global y físico del artículo
         articulo.stock_actual += item_recibido.cantidad_a_recibir
         
@@ -170,7 +173,7 @@ async def recibir_orden(
             tipo_movimiento=TipoMovimiento.ENTRADA,
             concepto=f"Recepción de OC {numero_orden}",
             cantidad=item_recibido.cantidad_a_recibir,
-            costo_unitario=item_orden.costo_unitario_estimado,
+            costo_unitario=item_recibido.costo_unitario, # <--- ACTUALIZADO
             id_referencia=peticion.id_referencia,
             flujo_trabajo_seleccionado=peticion.flujo_trabajo_seleccionado
         )

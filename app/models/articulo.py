@@ -34,6 +34,7 @@ class Articulo(Document):
     punto_reorden: float = 0.0  
     precio_venta: float = 0.0 
     controla_lotes: bool = True 
+    activo: bool = Field(default=True, description="Controla el borrado lógico del artículo")
     metadatos: Dict[str, Any] = Field(default_factory=dict)
     
     fecha_creacion: datetime = Field(default_factory=lambda: datetime.now(ZoneInfo("America/La_Paz")))

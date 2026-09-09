@@ -87,3 +87,21 @@ async def mostrar_pos(request: Request):
         request=request, 
         name="pos.hbs"
     )
+
+@router.get("/ajuste-fisico")
+async def vista_ajuste_fisico(request: Request):
+    """Renderiza la pantalla de conteo físico y ajustes de inventario."""
+    return templates.TemplateResponse(
+        request=request, 
+        name="ajuste_fisico.hbs",
+        context={"mostrar_menu": True}  # <--- Vital para que aparezca la barra de navegación superior
+    )
+
+@router.get("/articulos")
+async def vista_articulos(request: Request):
+    """Renderiza el gestor del catálogo de artículos."""
+    return templates.TemplateResponse(
+        request=request, 
+        name="articulos.hbs",
+        context={"mostrar_menu": True}
+    )

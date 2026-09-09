@@ -317,3 +317,32 @@ async def buscar_articulo_pos(termino: str):
         )
         
     return resultados
+
+@router.patch("/{sku}/estado", response_model=Articulo, status_code=status.HTTP_200_OK)
+async def cambiar_estado_articulo(
+    sku: str,
+    usuario_actual = Depends(obtener_usuario_actual)
+):
+    """
+    Alterna el estado de un artículo entre activo e inactivo (borrado lógico).
+    Solo accesible para Administradores.
+    """
+    if usuario_actual.rol != RolUsuario.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Acceso denegado: Solo los administradores pueden cambiar el estado de los artículos."
+        )
+
+    articulo = await Articulo.find_one(Articulo.sku == sku)
+    
+    if not articulo:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"El artículo con SKU '{sku}' no existe."
+        )
+    
+    # Alternamos el valor actual (si era True pasa a False, y viceversa)
+    articulo.activo = not getattr(articulo, 'activo', True)
+    
+    await articulo.save()
+    return articulo

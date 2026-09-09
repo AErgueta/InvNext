@@ -50,18 +50,36 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         // Construimos las filas dinámicamente
+        // Construimos las filas dinámicamente
         datos.ultimos_movimientos.forEach(mov => {
-            // Asignamos colores según el tipo de movimiento
-            let badgeClass = 'bg-secondary';
-            if (mov.tipo.includes('IN_')) badgeClass = 'bg-success';
-            if (mov.tipo.includes('OUT_')) badgeClass = 'bg-danger';
+            // Asignamos colores y signos de forma más robusta
+            let badgeClass = 'bg-secondary'; // Gris por defecto (ej. Ajustes neutros)
+            let signo = '';
+
+            // Si la palabra clave contiene IN o ENTRADA
+            if (mov.tipo.includes('IN') || mov.tipo.includes('ENTRADA')) {
+                badgeClass = 'bg-success';
+                signo = '+';
+            } 
+            // Si la palabra clave contiene OUT o SALIDA
+            else if (mov.tipo.includes('OUT') || mov.tipo.includes('SALIDA')) {
+                badgeClass = 'bg-danger';
+                signo = '-';
+            }
 
             const tr = document.createElement('tr');
+            
+            // Dibujamos la fila inyectando el Usuario y dejando la Fecha más pequeñita debajo
             tr.innerHTML = `
                 <td><span class="badge ${badgeClass}">${mov.tipo.replace('_', ' ')}</span></td>
                 <td><strong>${mov.articulo}</strong></td>
-                <td>${mov.tipo.includes('IN_') ? '+' : '-'}${mov.cantidad}</td>
-                <td class="text-muted small">${mov.fecha}</td>
+                <td class="${signo === '+' ? 'text-success' : (signo === '-' ? 'text-danger' : '')} fw-bold">
+                    ${signo}${mov.cantidad}
+                </td>
+                <td class="text-muted small">
+                    <i class="bi bi-person-circle"></i> ${mov.usuario || 'Sistema'} <br>
+                    <span style="font-size: 0.85em;">${mov.fecha}</span>
+                </td>
             `;
             tbody.appendChild(tr);
         });
