@@ -10,6 +10,8 @@ function obtenerToken() {
 }
 
 // --- Lógica para pintar la tabla en pantalla ---
+// --- Lógica para pintar la tabla en pantalla ---
+// --- Lógica para pintar la tabla en pantalla ---
 document.getElementById('btn-consultar-kardex').addEventListener('click', async (e) => {
     const token = obtenerToken();
     if (!token) return;
@@ -23,8 +25,24 @@ document.getElementById('btn-consultar-kardex').addEventListener('click', async 
 
     const inputInicio = document.getElementById('fecha-inicio').value;
     const inputFin = document.getElementById('fecha-fin').value;
+
+    // Validación cronológica de fechas
+    if (inputInicio && inputFin) {
+        if (inputInicio > inputFin) {
+            alert("Error: La Fecha de Inicio no puede ser posterior a la Fecha Fin.");
+            return;
+        }
+    }
+
     const inputAlmacen = document.getElementById('filtro_almacen').value;
+
+    // Control del botón (Anti-ansiedad / Spinner)
+    const btnConsultar = document.getElementById('btn-consultar-kardex');
+    const textoOriginalBtn = btnConsultar.innerHTML;
     
+    btnConsultar.disabled = true;
+    btnConsultar.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Buscando...';
+
     let url = `/movimientos/${sku}`;
     
     const params = new URLSearchParams();
@@ -56,15 +74,12 @@ document.getElementById('btn-consultar-kardex').addEventListener('click', async 
         if (!response.ok) throw new Error("Error al obtener los datos");
         
         const data = await response.json();
-        
-        // Capturamos la unidad de medida enviada por el backend
         const unidad = data.unidad_medida || ""; 
         
         let htmlFilas = "";
         let saldoActual = data.saldo_inicial;
         let valorInicial = saldoActual === 0 ? "$0.00" : "-"; 
 
-        // Agregamos la unidad al Saldo Inicial
         htmlFilas += `
             <tr style="background-color: #f8f9fa; font-weight: bold;">
                 <td>-</td>
@@ -105,7 +120,6 @@ document.getElementById('btn-consultar-kardex').addEventListener('click', async 
                 const colorFondo = ingreso > 0 ? '#e8f5e9' : '#ffebee';
                 const colorTexto = ingreso > 0 ? 'green' : 'red';
 
-                // Agregamos la unidad a los ingresos y egresos
                 const ingresoStr = ingreso > 0 ? '+' + ingreso.toLocaleString('en-US') + ' ' + unidad : '-';
                 const egresoStr = egreso > 0 ? '-' + egreso.toLocaleString('en-US') + ' ' + unidad : '-';
 
@@ -130,9 +144,13 @@ document.getElementById('btn-consultar-kardex').addEventListener('click', async 
     } catch (error) {
         console.error("Error:", error);
         tbody.innerHTML = '<tr><td colspan="9" style="color: red; text-align: center;">Ocurrió un error al cargar el Kardex.</td></tr>';
+    } finally {
+        btnConsultar.disabled = false;
+        btnConsultar.innerHTML = textoOriginalBtn;
     }
 });
 
+// --- Lógica para exportar el Kardex a CSV ---
 // --- Lógica para exportar el Kardex a CSV ---
 document.getElementById('btn-descargar-kardex').addEventListener('click', async () => {
     const token = obtenerToken();
@@ -147,6 +165,15 @@ document.getElementById('btn-descargar-kardex').addEventListener('click', async 
 
     const inputInicio = document.getElementById('fecha-inicio').value;
     const inputFin = document.getElementById('fecha-fin').value;
+    
+    // Validación de fechas para la exportación
+    if (inputInicio && inputFin) {
+        if (inputInicio > inputFin) {
+            alert("Error: La Fecha de Inicio no puede ser posterior a la Fecha Fin.");
+            return;
+        }
+    }
+
     const inputAlmacen = document.getElementById('filtro_almacen').value;
     
     let url = `/movimientos/${sku}/exportar`;
@@ -185,6 +212,7 @@ document.getElementById('btn-descargar-kardex').addEventListener('click', async 
         alert("Hubo un problema al intentar descargar el reporte.");
     }
 });
+
 
 // ==========================================
 // UX DEL MODAL: Autocompletado y Cálculos (CORREGIDO)

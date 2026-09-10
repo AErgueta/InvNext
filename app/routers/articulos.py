@@ -178,6 +178,7 @@ async def actualizar_precio_venta(
 # 1. Creamos un esquema de validación solo para los campos que se pueden editar
 class ArticuloUpdate(BaseModel):
     nombre: Optional[str] = None
+    codigo_barras: Optional[str] = None
     descripcion: Optional[str] = None
     stock_minimo: Optional[float] = None
     precio_venta: Optional[float] = None

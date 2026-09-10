@@ -52,6 +52,11 @@
                     </div>
 
                     <div class="mb-3">
+                        <label class="form-label fw-bold">Código de Barras</label>
+                        <input type="text" class="form-control" id="edit-barras" placeholder="Opcional">
+                    </div>
+
+                    <div class="mb-3">
                         <label class="form-label fw-bold">Nombre / Descripción</label>
                         <input type="text" class="form-control" id="edit-nombre" required>
                     </div>
@@ -65,6 +70,64 @@
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
                 <button type="button" class="btn btn-primary" id="btn-guardar-cambios">Guardar Cambios</button>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Modal de Creación de Artículo -->
+<div class="modal fade" id="modalCrear" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title"><i class="bi bi-plus-circle"></i> Nuevo Artículo</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="form-crear-articulo">
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">SKU <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="crear-sku" placeholder="Ej: PROD-001" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">Código de Barras</label>
+                            <input type="text" class="form-control" id="crear-barras" placeholder="Opcional">
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Nombre / Descripción <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="crear-nombre" required>
+                    </div>
+
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">Precio Venta ($) <span class="text-danger">*</span></label>
+                            <input type="number" step="0.01" min="0" class="form-control" id="crear-precio" value="0.00" required>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">Controla Lotes</label>
+                            <select class="form-select" id="crear-lotes">
+                                <option value="true">Sí (Lógica FEFO)</option>
+                                <option value="false">No</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">Flujo de Seguimiento <span class="text-danger">*</span></label>
+                            <select class="form-select" id="crear-flujo" required>
+                                <option value="" disabled selected>-- Elegir ruta --</option>
+                                <option value="almacen_general">Almacén General</option>
+                                <option value="cadena_frio">Cadena de Frío</option>
+                                <option value="insumos_internos">Insumos Internos</option>
+                            </select>
+                            <div class="form-text">Asignación manual obligatoria.</div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary" id="btn-guardar-nuevo">Crear Artículo</button>
             </div>
         </div>
     </div>

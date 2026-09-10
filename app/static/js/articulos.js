@@ -10,6 +10,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     let ordenAscendenteNombre = true;
     
     const modalEditar = new bootstrap.Modal(document.getElementById('modalEditar'));
+    const modalCrear = new bootstrap.Modal(document.getElementById('modalCrear'));
 
     async function cargarCatalogo() {
         try {
@@ -129,6 +130,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!articulo) return;
 
         document.getElementById('edit-sku').value = articulo.sku;
+        document.getElementById('edit-barras').value = articulo.codigo_barras || '';
         document.getElementById('edit-sku-original').value = articulo.sku;
         document.getElementById('edit-nombre').value = articulo.nombre || '';
         document.getElementById('edit-precio').value = articulo.precio_venta || 0;
@@ -140,6 +142,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const sku = document.getElementById('edit-sku-original').value;
         const nuevoNombre = document.getElementById('edit-nombre').value;
         const nuevoPrecio = parseFloat(document.getElementById('edit-precio').value);
+        const nuevoBarras = document.getElementById('edit-barras').value.trim();
 
         try {
             const respuesta = await fetch(`/articulos/${sku}`, {
@@ -150,7 +153,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 },
                 body: JSON.stringify({
                     nombre: nuevoNombre,
-                    precio_venta: nuevoPrecio
+                    precio_venta: nuevoPrecio,
+                    codigo_barras: nuevoBarras || null
                 })
             });
 
@@ -181,8 +185,60 @@ document.addEventListener('DOMContentLoaded', async () => {
         dibujarTabla(listaArticulos);
     });
 
+    // Abrir el modal de creación y limpiar campos
     document.getElementById('btn-nuevo-articulo').addEventListener('click', () => {
-        alert("¡Próximamente modal de creación!");
+        document.getElementById('form-crear-articulo').reset();
+        modalCrear.show();
+    });
+
+    // Guardar el nuevo artículo
+    document.getElementById('btn-guardar-nuevo').addEventListener('click', async () => {
+        const sku = document.getElementById('crear-sku').value.trim();
+        const nombre = document.getElementById('crear-nombre').value.trim();
+        const barras = document.getElementById('crear-barras').value.trim();
+        const precio = parseFloat(document.getElementById('crear-precio').value);
+        const controlaLotes = document.getElementById('crear-lotes').value === 'true';
+        const flujoSeguimiento = document.getElementById('crear-flujo').value;
+
+        // Validación básica
+        if (!sku || !nombre || isNaN(precio) || !flujoSeguimiento) {
+            alert("Por favor, completa todos los campos obligatorios.");
+            return;
+        }
+
+        const nuevoArticulo = {
+            sku: sku,
+            nombre: nombre,
+            codigo_barras: barras || null,
+            precio_venta: precio,
+            controla_lotes: controlaLotes,
+            metadatos: {
+                flujo_seguimiento: flujoSeguimiento
+            }
+        };
+
+        try {
+            const respuesta = await fetch('/articulos/', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(nuevoArticulo)
+            });
+
+            if (!respuesta.ok) {
+                const err = await respuesta.json();
+                alert(`Error al crear: ${err.detail || 'Verifica los datos'}`);
+                return;
+            }
+
+            modalCrear.hide();
+            cargarCatalogo(); // Refresca la tabla automáticamente
+        } catch (error) {
+            console.error("Error de red:", error);
+            alert("No se pudo conectar con el servidor.");
+        }
     });
 
     cargarCatalogo();
