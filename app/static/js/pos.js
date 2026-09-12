@@ -536,3 +536,40 @@ function imprimirTicket(folio, cliente, documento, carrito, descuentoGlobal, rec
     ventana.document.write(html);
     ventana.document.close();
 }
+
+// ==========================================
+// ATAJOS DE TECLADO GLOBALES
+// ==========================================
+document.addEventListener('keydown', (e) => {
+    // Evitamos que las teclas 'F' recarguen la página o hagan acciones nativas del navegador (excepto F5)
+    if (['F2', 'F4', 'F8', 'F12'].includes(e.key)) {
+        e.preventDefault();
+    }
+
+    switch (e.key) {
+        case 'F2':
+            inputBuscador.focus();
+            inputBuscador.select(); // Selecciona el texto si ya había algo escrito
+            break;
+        case 'F4':
+            selectMetodoPago.focus();
+            break;
+        case 'F8':
+            if (selectMetodoPago.value === 'EFECTIVO' && !cajaEfectivo.classList.contains('d-none')) {
+                inputRecibido.focus();
+                inputRecibido.select();
+            } else if (!cajaReferencia.classList.contains('d-none')) {
+                inputReferencia.focus();
+                inputReferencia.select();
+            }
+            break;
+        case 'F12':
+            if (!btnCobrar.disabled) {
+                btnCobrar.click();
+            } else {
+                reproducirBeep(false);
+                alert("No se puede procesar el cobro. Revisa el carrito o el monto ingresado.");
+            }
+            break;
+    }
+});

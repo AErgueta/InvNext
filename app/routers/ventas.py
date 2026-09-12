@@ -60,13 +60,13 @@ async def registrar_venta(
     # ==========================================
     if request.documento_cliente and request.documento_cliente.strip().upper() != "S/N":
         # Verificamos si ya existe el cliente por su documento/NIT
-        cliente_existente = await Cliente.find_one(Cliente.documento == request.documento_cliente.strip().upper())
+        cliente_existente = await Cliente.find_one(Cliente.documento_identidad == request.documento_cliente.strip().upper())
         
         if not cliente_existente:
             # Si no existe, lo creamos automáticamente al vuelo
             nuevo_cliente = Cliente(
                 nombre_razon_social=request.cliente.strip(),
-                documento=request.documento_cliente.strip().upper(),
+                documento_identidad=request.documento_cliente.strip().upper(),
                 activo=True
             )
             await nuevo_cliente.insert()
