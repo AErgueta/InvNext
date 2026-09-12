@@ -1,6 +1,30 @@
 {% extends "layouts/main.hbs" %}
 
 {% block contenido %}
+<!-- ========================================== -->
+<!-- ESTILOS DE IMPRESIÓN                       -->
+<!-- ========================================== -->
+<style>
+    @media print {
+        /* Ocultar elementos de navegación y menús */
+        nav, header, aside, .sidebar, .navbar { display: none !important; }
+        
+        /* Ocultar botones de acción y filtros */
+        .col-auto, .card.mb-4 { display: none !important; }
+        
+        /* Limpiar fondo para ahorrar tinta */
+        body { background-color: white !important; padding: 0 !important; margin: 0 !important; }
+        .card { border: none !important; box-shadow: none !important; }
+        
+        /* Forzar que la tabla ocupe toda la hoja y respete los colores de fila */
+        .table { width: 100% !important; }
+        * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+        }
+    }
+</style>
+
 <div class="row mb-4 align-items-center">
     <div class="col">
         <h2 class="mb-0">Kardex de Inventario (Detalle por Artículo)</h2>
@@ -21,10 +45,22 @@
 <div class="card shadow-sm mb-4">
     <div class="card-body">
         <div class="row g-3 align-items-end">
-            <div class="col-md-3">
-                <label for="input-sku" class="form-label">SKU del Artículo</label>
-                <input type="text" class="form-control" id="input-sku" placeholder="Ej. ART-001">
+            
+            <!-- NUEVO: Búsqueda Inteligente (Reemplaza al input-sku anterior) -->
+            <div class="col-md-3 position-relative">
+                <label for="input-busqueda" class="form-label">Buscar Artículo</label>
+                <div class="input-group">
+                    <span class="input-group-text"><i class="bi bi-upc-scan"></i></span>
+                    <input type="text" class="form-control" id="input-busqueda" placeholder="SKU, Código o Nombre..." autocomplete="off">
+                </div>
+                <!-- Menú desplegable para autocompletar -->
+                <ul class="dropdown-menu w-100 shadow-lg" id="dropdown-resultados" style="max-height: 250px; overflow-y: auto;">
+                </ul>
+                <!-- Input oculto que mantiene la lógica actual de tu JS intacta -->
+                <input type="hidden" id="input-sku">
             </div>
+
+            <!-- El resto de los filtros se mantienen igual -->
             <div class="col-md-2">
                 <label for="fecha-inicio" class="form-label">Fecha Inicio</label>
                 <input type="date" class="form-control" id="fecha-inicio">
@@ -37,9 +73,14 @@
                 <label for="filtro_almacen" class="form-label">Almacén (Opcional)</label>
                 <input type="text" class="form-control" id="filtro_almacen" placeholder="Código">
             </div>
+            
+            <!-- Botones de Acción -->
             <div class="col-md-3 d-flex gap-2">
-                <button class="btn btn-primary w-100" id="btn-consultar-kardex">Consultar</button>
-                <button class="btn btn-outline-success w-100" id="btn-descargar-kardex" title="Exportar CSV">Exportar</button>
+                <button class="btn btn-primary w-100" id="btn-consultar-kardex" style="font-size: 0.9rem;">Consultar</button>
+                <button class="btn btn-outline-success w-100" id="btn-descargar-kardex" title="Exportar CSV" style="font-size: 0.9rem;">Exportar</button>
+                <button class="btn btn-outline-secondary w-100" onclick="window.print()" title="Imprimir Kardex" style="font-size: 0.9rem;">
+                    Imprimir
+                </button>
             </div>
         </div>
     </div>

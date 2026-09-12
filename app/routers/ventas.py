@@ -13,6 +13,7 @@ from app.models.usuario import Usuario
 from app.models.lote import Lote
 from app.models.articulo import Articulo
 from app.models.cuenta_corriente import CuentaCorriente, TipoTransaccionCxC
+from app.models.cliente import Cliente
 
 router = APIRouter(
     prefix="/ventas",
@@ -30,6 +31,10 @@ class NuevaVentaRequest(BaseModel):
     articulos: List[DetalleVenta]
     descuento_global: float = 0.0
     condicion_pago: CondicionPago = CondicionPago.CONTADO
+    # --- CAMPOS DE PAGO
+    metodo_pago: str
+    efectivo_recibido: float
+    referencia_pago: str
 
 class AnularVentaRequest(BaseModel):
     flujo_trabajo_seleccionado: str 
@@ -50,6 +55,22 @@ async def registrar_venta(
     Recibe un carrito de compras, valida las matemáticas, genera el documento de Venta
     y dispara los movimientos de salida en estado PENDIENTE.
     """
+    # ==========================================
+    # ALTA RÁPIDA DE CLIENTE AUTOMÁTICA
+    # ==========================================
+    if request.documento_cliente and request.documento_cliente.strip().upper() != "S/N":
+        # Verificamos si ya existe el cliente por su documento/NIT
+        cliente_existente = await Cliente.find_one(Cliente.documento == request.documento_cliente.strip().upper())
+        
+        if not cliente_existente:
+            # Si no existe, lo creamos automáticamente al vuelo
+            nuevo_cliente = Cliente(
+                nombre_razon_social=request.cliente.strip(),
+                documento=request.documento_cliente.strip().upper(),
+                activo=True
+            )
+            await nuevo_cliente.insert()
+    
     # 1. Auditoría Matemática
     subtotal_calculado = 0.0
     for art in request.articulos:
@@ -71,7 +92,13 @@ async def registrar_venta(
         folio=folio_generado,
         cliente=request.cliente,
         documento_cliente=request.documento_cliente,
-        condicion_pago=request.condicion_pago,          
+        condicion_pago=request.condicion_pago,
+
+        # --- NUEVOS CAMPOS DE PAGO ---
+        metodo_pago=request.metodo_pago,
+        efectivo_recibido=request.efectivo_recibido,
+        referencia_pago=request.referencia_pago,
+                  
         articulos=request.articulos,
         subtotal_venta=subtotal_calculado,
         descuento_global=request.descuento_global,

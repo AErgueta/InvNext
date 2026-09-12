@@ -52,5 +52,10 @@ class Venta(Document):
     estado: EstadoVenta = Field(default=EstadoVenta.PENDIENTE)
     referencia_movimiento_id: Optional[Union[str, List[str]]] = None
 
+    # Añadir dentro de la clase Venta en app/models/venta.py:
+    metodo_pago: str = "EFECTIVO"
+    efectivo_recibido: float = 0.0
+    referencia_pago: Optional[str] = None
+
     class Settings:
         name = "ventas"

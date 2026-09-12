@@ -293,31 +293,30 @@ async def buscar_por_codigo_barras(codigo: str):
         
     return articulo
 
-@router.get("/buscar/{termino}", status_code=status.HTTP_200_OK)
-async def buscar_articulo_pos(termino: str):
+@router.get("/buscar", status_code=status.HTTP_200_OK)
+async def buscar_articulo_dinamico(q: str):
     """
-    Busca artículos para el Punto de Venta usando Regex (Coincidencia parcial).
-    Busca tanto por SKU como por Nombre, sin diferenciar mayúsculas/minúsculas.
+    Busca artículos para el Punto de Venta y Autocompletado del Kardex.
+    Busca por SKU, Nombre (coincidencia parcial) o Código de Barras (exacto).
     """
-    # Buscamos usando una expresión regular sencilla
-    # $regex: termino, $options: 'i' (case-insensitive)
+    # Consulta optimizada para MongoDB / Beanie
     query = {
         "$or": [
-            {"sku": {"$regex": termino, "$options": "i"}},
-            {"nombre": {"$regex": termino, "$options": "i"}}
+            {"sku": {"$regex": q, "$options": "i"}},
+            {"nombre": {"$regex": q, "$options": "i"}},
+            {"codigo_barras": q}  # Coincidencia exacta para el lector láser
         ]
     }
     
-    # Limitamos a 10 resultados para que la respuesta sea instantánea en caja
+    # Limitamos a 10 resultados para que la respuesta sea instantánea
     resultados = await Articulo.find(query).limit(10).to_list()
+
+
     
-    if not resultados:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No se encontraron artículos con ese término."
-        )
-        
+    # Devolvemos siempre la lista (aunque esté vacía) 
+    # para que el frontend maneje el "No encontrado" sin lanzar errores HTTP
     return resultados
+
 
 @router.patch("/{sku}/estado", response_model=Articulo, status_code=status.HTTP_200_OK)
 async def cambiar_estado_articulo(
