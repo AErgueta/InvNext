@@ -36,6 +36,12 @@ class Venta(Document):
     
     # CORREGIDO: Se usa default_factory para obtener la hora real de la transacción
     fecha_registro: datetime = Field(default_factory=datetime.utcnow)
+
+    # ==========================================
+    # NUEVOS CAMPOS: ESTRUCTURA MULTISUCURSAL
+    # ==========================================
+    sucursal_id: str   # Ej. "SUC-CENTRAL"
+    caja_id: str       # Ej. "CAJA-01-CENTRAL"
     
     # --- NUEVO CAMPO: Contado o Crédito ---
     condicion_pago: CondicionPago = Field(default=CondicionPago.CONTADO)

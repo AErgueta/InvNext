@@ -33,6 +33,134 @@ const formatearMoneda = (valor) => {
 };
 
 // ==========================================
+// CONTROL DE SESIÓN DE CAJA MULTISUCURSAL
+// ==========================================
+// TODO: Estos valores deberían venir del login del usuario o de un selector previo
+const CONTEXTO_ACTUAL = {
+    sucursal_id: "SUC-CENTRAL", // Valor temporal para pruebas
+    caja_id: "CAJA-01-CENTRAL"  // Valor temporal para pruebas
+};
+
+let sesionCajaActiva = false;
+const modalApertura = new bootstrap.Modal(document.getElementById('modalAperturaCaja'));
+const modalCierre = new bootstrap.Modal(document.getElementById('modalCierreCaja'));
+
+async function verificarEstadoCaja() {
+    try {
+        const response = await fetch(`/cajas/${CONTEXTO_ACTUAL.caja_id}/estado`);
+        const data = await response.json();
+        
+        if (data.abierta) {
+            sesionCajaActiva = true;
+            // Desbloquear interfaz
+            inputBuscador.disabled = false;
+        } else {
+            sesionCajaActiva = false;
+            // Bloquear interfaz y forzar apertura
+            inputBuscador.disabled = true;
+            modalApertura.show();
+        }
+    } catch (error) {
+        console.error("Error al verificar estado de la caja:", error);
+    }
+}
+
+// Ejecutar al iniciar la pantalla
+document.addEventListener('DOMContentLoaded', verificarEstadoCaja);
+
+// --- ACCIÓN: ABRIR CAJA ---
+document.getElementById('btn-abrir-caja').addEventListener('click', async () => {
+    const monto = parseFloat(document.getElementById('input-monto-inicial').value) || 0;
+    
+    try {
+        const token = localStorage.getItem("erp_token");
+        const response = await fetch('/cajas/abrir', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+                caja_id: CONTEXTO_ACTUAL.caja_id,
+                sucursal_id: CONTEXTO_ACTUAL.sucursal_id,
+                monto_inicial: monto
+            })
+        });
+
+        if (response.ok) {
+            modalApertura.hide();
+            sesionCajaActiva = true;
+            inputBuscador.disabled = false;
+            inputBuscador.focus();
+            reproducirBeep(true);
+        } else {
+            const error = await response.json();
+            alert("Error: " + error.detail);
+        }
+    } catch (error) {
+        console.error("Error abriendo caja:", error);
+    }
+});
+
+// --- ACCIÓN: CERRAR CAJA ---
+document.getElementById('btn-procesar-cierre').addEventListener('click', async () => {
+    const montoReal = parseFloat(document.getElementById('input-monto-cierre').value) || 0;
+    const checkConfirmar = document.getElementById('check-confirmar-diferencia').checked;
+    
+    if(!confirm(`¿Declarar Bs. ${montoReal} como tu efectivo final?`)) return;
+
+    try {
+        const token = localStorage.getItem("erp_token");
+        const response = await fetch(`/cajas/${CONTEXTO_ACTUAL.caja_id}/cerrar`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ 
+                monto_cierre_real: montoReal,
+                confirmar_diferencia: checkConfirmar
+            })
+        });
+
+        const data = await response.json();
+        
+        if (response.ok) {
+            if (data.requiere_confirmacion) {
+                // EL BACKEND DETUVO EL CIERRE. MOSTRAR ALERTA PARA RECTIFICAR.
+                document.getElementById('alerta-descuadre').classList.remove('d-none');
+                document.getElementById('texto-descuadre').innerText = data.mensaje;
+                // Desmarcar el check por seguridad
+                document.getElementById('check-confirmar-diferencia').checked = false;
+            } else {
+                // EL CIERRE FUE EXITOSO (Cuadre perfecto o diferencia confirmada)
+                modalCierre.hide();
+                // alert(`Arqueo Exitoso.\n\nSistema: Bs. ${formatearMoneda(data.monto_calculado_sistema)}\nDeclarado: Bs. ${formatearMoneda(data.monto_declarado_cajero)}\nDiferencia: Bs. ${formatearMoneda(data.diferencia)}\nEstado: ${data.cuadre}`);
+                
+                // MANDAR A IMPRIMIR EL REPORTE Z
+                imprimirReporteCierre(data);
+
+                // RECARGAR CON RETRASO
+                setTimeout(() => {
+                    window.location.reload(); 
+                }, 1500);
+            }
+        } else {
+            alert("Error: " + data.detail);
+        }
+    } catch (error) {
+        console.error("Error cerrando caja:", error);
+    }
+});
+
+// Ocultar alerta de descuadre si el usuario modifica el monto (significa que está rectificando)
+document.getElementById('input-monto-cierre').addEventListener('input', () => {
+    document.getElementById('alerta-descuadre').classList.add('d-none');
+    document.getElementById('check-confirmar-diferencia').checked = false;
+});
+
+
+// ==========================================
 // EFECTOS DE SONIDO (NATIVO DEL NAVEGADOR)
 // ==========================================
 function reproducirBeep(exito = true) {
@@ -358,7 +486,10 @@ btnCobrar.addEventListener('click', async () => {
         condicion_pago: document.getElementById('pos-condicion').value,
         metodo_pago: selectMetodoPago.value,
         efectivo_recibido: selectMetodoPago.value === 'EFECTIVO' ? (parseFloat(inputRecibido.value) || 0) : totalVentaActual,
-        referencia_pago: selectMetodoPago.value !== 'EFECTIVO' ? inputReferencia.value : "N/A"
+        referencia_pago: selectMetodoPago.value !== 'EFECTIVO' ? inputReferencia.value : "N/A",
+        // --- NUEVOS CAMPOS: MULTISUCURSAL ---
+        sucursal_id: CONTEXTO_ACTUAL.sucursal_id,
+        caja_id: CONTEXTO_ACTUAL.caja_id
     };
 
     try {
@@ -538,6 +669,131 @@ function imprimirTicket(folio, cliente, documento, carrito, descuentoGlobal, rec
 }
 
 // ==========================================
+// IMPRESIÓN DEL REPORTE DE CIERRE (TICKET Z)
+// ==========================================
+function imprimirReporteCierre(datosCierre) {
+    const ventanaImpresion = window.open('', '_blank', 'width=400,height=600');
+    
+    // Validación de seguridad para navegadores estrictos (ej. Brave)
+    if (!ventanaImpresion) {
+        alert("⚠️ ATENCIÓN: El navegador bloqueó el ticket. Por favor, permite las ventanas emergentes para este sitio en la barra de direcciones.");
+        return false;
+    }
+
+    const fechaActual = new Date().toLocaleString('es-BO', { timeZone: 'America/La_Paz' });
+
+    const htmlTicket = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Reporte Z</title>
+            <style>
+                body { 
+                    font-family: 'Courier New', Courier, monospace; 
+                    font-size: 12px; 
+                    margin: 0; 
+                    padding: 10px; 
+                    width: 280px; 
+                    color: #000;
+                }
+                .text-center { text-align: center; }
+                .bold { font-weight: bold; }
+                .divider { border-top: 1px dashed #000; margin: 10px 0; }
+                .flex-space { display: flex; justify-content: space-between; margin-bottom: 3px; }
+                .signature-line { 
+                    border-top: 1px solid #000; 
+                    text-align: center; 
+                    width: 80%; 
+                    margin: 40px auto 10px auto; 
+                    padding-top: 5px; 
+                }
+                .estado-badge {
+                    display: inline-block;
+                    padding: 3px 10px;
+                    border: 1px solid #000;
+                    margin-top: 5px;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="text-center bold" style="font-size: 14px;">REPORTE DE ARQUEO DE CAJA</div>
+            <div class="text-center">Sistema POS</div>
+            <div class="divider"></div>
+            
+            <div><span class="bold">Fecha/Hora:</span> ${fechaActual}</div>
+            <div><span class="bold">Sucursal:</span> ${CONTEXTO_ACTUAL.sucursal_id}</div>
+            <div><span class="bold">Caja ID:</span> ${CONTEXTO_ACTUAL.caja_id}</div>
+            
+            <div class="divider"></div>
+            <div class="text-center bold">RESUMEN DE EFECTIVO</div>
+            <div class="divider"></div>
+            
+            <div class="flex-space">
+                <span>Total Calculado Sist.:</span> 
+                <span>Bs. ${formatearMoneda(datosCierre.monto_calculado_sistema)}</span>
+            </div>
+            <div class="flex-space bold">
+                <span>Total Físico Declarado:</span> 
+                <span>Bs. ${formatearMoneda(datosCierre.monto_declarado_cajero)}</span>
+            </div>
+            
+            <div class="divider"></div>
+            
+            <div class="flex-space bold">
+                <span>Diferencia:</span> 
+                <span>Bs. ${formatearMoneda(datosCierre.diferencia)}</span>
+            </div>
+            <div class="text-center">
+                <div class="estado-badge bold">ESTADO: ${datosCierre.cuadre}</div>
+            </div>
+
+            <div class="divider"></div>
+            <div class="text-center bold">DESGLOSE DE TRANSACCIONES</div>
+            <div class="divider"></div>
+            
+            <div class="flex-space">
+                <span>Fondo Inicial:</span> 
+                <span>Bs. ${formatearMoneda(datosCierre.monto_inicial || 0)}</span>
+            </div>
+            <div class="flex-space">
+                <span>Efectivo (${datosCierre.resumen_pagos?.EFECTIVO?.cantidad || 0} Tx):</span> 
+                <span>Bs. ${formatearMoneda(datosCierre.resumen_pagos?.EFECTIVO?.total || 0)}</span>
+            </div>
+            <div class="flex-space">
+                <span>Tarjetas (${datosCierre.resumen_pagos?.TARJETA?.cantidad || 0} Tx):</span> 
+                <span>Bs. ${formatearMoneda(datosCierre.resumen_pagos?.TARJETA?.total || 0)}</span>
+            </div>
+            <div class="flex-space">
+                <span>Pagos QR (${datosCierre.resumen_pagos?.QR?.cantidad || 0} Tx):</span> 
+                <span>Bs. ${formatearMoneda(datosCierre.resumen_pagos?.QR?.total || 0)}</span>
+            </div>
+            
+            <br><br>
+            
+            <div class="signature-line">Firma Cajero</div>
+            <br>
+            <div class="signature-line">Firma Supervisor</div>
+            
+            <div class="text-center" style="margin-top: 15px; font-size: 10px;">
+                *** Fin del Reporte ***
+            </div>
+        </body>
+        </html>
+    `;
+
+    ventanaImpresion.document.write(htmlTicket);
+    ventanaImpresion.document.close();
+    ventanaImpresion.focus();
+
+    setTimeout(() => {
+        ventanaImpresion.print();
+        ventanaImpresion.close();
+    }, 500);
+
+    return true;
+}
+
+// ==========================================
 // ATAJOS DE TECLADO GLOBALES
 // ==========================================
 document.addEventListener('keydown', (e) => {
@@ -572,4 +828,10 @@ document.addEventListener('keydown', (e) => {
             }
             break;
     }
+});
+
+// --- ACCIÓN: MOSTRAR MODAL DE CIERRE ---
+document.getElementById('btn-mostrar-cierre').addEventListener('click', () => {
+    // modalCierre ya está definido al inicio de tu pos.js
+    modalCierre.show(); 
 });

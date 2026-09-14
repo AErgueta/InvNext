@@ -35,6 +35,9 @@ class NuevaVentaRequest(BaseModel):
     metodo_pago: str
     efectivo_recibido: float
     referencia_pago: str
+    # --- NUEVOS CAMPOS ---
+    sucursal_id: str
+    caja_id: str
 
 class AnularVentaRequest(BaseModel):
     flujo_trabajo_seleccionado: str 
@@ -92,6 +95,11 @@ async def registrar_venta(
         folio=folio_generado,
         cliente=request.cliente,
         documento_cliente=request.documento_cliente,
+        
+        # --- NUEVOS CAMPOS: MULTISUCURSAL ---
+        sucursal_id=request.sucursal_id,
+        caja_id=request.caja_id,
+        
         condicion_pago=request.condicion_pago,
 
         # --- NUEVOS CAMPOS DE PAGO ---

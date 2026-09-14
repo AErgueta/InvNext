@@ -23,10 +23,16 @@
 </style>
 
 <div class="container-fluid mt-4">
-    <div class="row mb-4">
-        <div class="col">
-            <h2 class="text-primary"><i class="bi bi-shop"></i> Punto de Venta (POS)</h2>
-            <p class="text-muted">Módulo de facturación y salida de mercadería.</p>
+    <div class="row align-items-center mb-4">
+        <div class="col-md-8">
+            <h2 class="text-primary fw-bold mb-1">Punto de Venta (POS)</h2>
+            <p class="text-muted mb-0">Módulo de facturación y salida de mercadería.</p>
+        </div>
+        <div class="col-md-4 text-end">
+            <!-- NUEVO BOTÓN DE CIERRE DE CAJA -->
+            <button class="btn btn-outline-danger shadow-sm fw-bold" id="btn-mostrar-cierre">
+                <i class="bi bi-lock-fill"></i> Cierre de Caja
+            </button>
         </div>
     </div>
 
@@ -169,6 +175,71 @@
         </div>
     </div>
 </div>
+
+<!-- ========================================== -->
+<!-- MODAL: APERTURA DE CAJA                    -->
+<!-- ========================================== -->
+<div class="modal fade" id="modalAperturaCaja" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title"><i class="bi bi-box-arrow-in-right"></i> Apertura de Turno</h5>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted">Para comenzar a operar, por favor declara el fondo de caja (efectivo inicial).</p>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Monto Inicial (Bs.)</label>
+                    <input type="number" id="input-monto-inicial" class="form-control form-control-lg text-end fs-4" min="0" step="0.5" value="0">
+                </div>
+            </div>
+            <div class="modal-footer bg-light">
+                <button type="button" class="btn btn-success btn-lg w-100 fw-bold" id="btn-abrir-caja">
+                    <i class="bi bi-unlock"></i> ABRIR CAJA
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ========================================== -->
+<!-- MODAL: CIERRE DE CAJA (ARQUEO)             -->
+<!-- ========================================== -->
+<div class="modal fade" id="modalCierreCaja" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title"><i class="bi bi-lock"></i> Cierre de Caja (Arqueo)</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted">Cuenta el dinero físico en tu gaveta y decláralo a continuación. El sistema calculará las diferencias.</p>
+                
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Efectivo Real en Caja (Bs.)</label>
+                    <input type="number" id="input-monto-cierre" class="form-control form-control-lg text-end fs-4 text-danger" min="0" step="0.5" value="0">
+                </div>
+
+                <!-- NUEVO: ALERTA DE DESCUADRE (Oculto por defecto) -->
+                <div id="alerta-descuadre" class="alert alert-warning d-none mt-3 mb-0">
+                    <i class="bi bi-exclamation-triangle-fill"></i> <strong>¡Atención!</strong> <span id="texto-descuadre"></span>
+                    <div class="form-check mt-3">
+                        <input class="form-check-input" type="checkbox" id="check-confirmar-diferencia">
+                        <label class="form-check-label text-dark" for="check-confirmar-diferencia">
+                            Ya volví a contar. Confirmar cierre con esta diferencia.
+                        </label>
+                    </div>
+                </div>
+
+            </div>
+            <div class="modal-footer bg-light">
+                <button type="button" class="btn btn-danger btn-lg w-100 fw-bold" id="btn-procesar-cierre">
+                    <i class="bi bi-calculator"></i> PROCESAR ARQUEO
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 {% endblock %}
 
 {% block scripts %}

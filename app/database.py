@@ -15,6 +15,9 @@ from app.models.flujo import FlujoGobernanza, InstanciaTracking
 from app.models.cliente import Cliente
 from app.models.venta import Venta
 from app.models.cuenta_corriente import CuentaCorriente
+from app.models.sucursal import Sucursal
+from app.models.caja import Caja
+from app.models.sesion_caja import SesionCaja
 
 load_dotenv()
 
@@ -40,7 +43,10 @@ async def init_db():
             InstanciaTracking,
             Cliente,
             Venta,
-            CuentaCorriente
+            CuentaCorriente,
+            Sucursal,
+            Caja,
+            SesionCaja
         ] 
     )
     print(f"Conexión exitosa a la base de datos: {DATABASE_NAME}")
