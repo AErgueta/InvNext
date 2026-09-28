@@ -1,0 +1,207 @@
+{% extends "layouts/main.hbs" %}
+
+{% block contenido %}
+<div class="container-fluid mt-4">
+    <h2 class="text-primary fw-bold mb-4"><i class="bi bi-truck"></i> Logística y Traspasos</h2>
+
+    <!-- Pestañas de Navegación -->
+    <ul class="nav nav-tabs mb-4" id="traspasosTab" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active fw-bold" id="nuevo-tab" data-bs-toggle="tab" data-bs-target="#nuevo" type="button" role="tab">
+                <i class="bi bi-box-seam"></i> Nuevo Traspaso
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link fw-bold" id="pendientes-tab" data-bs-toggle="tab" data-bs-target="#pendientes" type="button" role="tab">
+                <i class="bi bi-inboxes"></i> Recepciones Pendientes
+            </button>
+        </li>
+    </ul>
+
+    <div class="tab-content" id="traspasosTabContent">
+        <!-- ========================================== -->
+        <!-- PESTAÑA 1: NUEVO TRASPASO                  -->
+        <!-- ========================================== -->
+        <div class="tab-pane fade show active" id="nuevo" role="tabpanel">
+            <div class="row">
+                <!-- Panel Izquierdo: Buscador y Artículos -->
+                <div class="col-lg-8">
+                    <div class="card shadow-sm border-0 mb-4">
+                        <div class="card-body">
+                            <h5 class="fw-bold mb-3">Artículos a Enviar</h5>
+                            
+                            <!-- Buscador estilo POS -->
+                            <div class="position-relative mb-3">
+                                <div class="input-group">
+                                    <span class="input-group-text bg-white"><i class="bi bi-search text-primary"></i></span>
+                                    <input type="text" id="traspaso-buscador" class="form-control form-control-lg border-start-0" placeholder="Buscar por SKU o Nombre..." autocomplete="off">
+                                </div>
+                                <ul class="dropdown-menu w-100 shadow-lg" id="dropdown-resultados-traspaso" style="max-height: 250px; overflow-y: auto; z-index: 1050;"></ul>
+                            </div>
+
+                            <div class="table-responsive" style="max-height: 350px; overflow-y: auto;">
+                                <table class="table table-hover align-middle mt-2" id="tabla-carrito-traspaso">
+                                    <thead class="table-light sticky-top">
+                                        <tr>
+                                            <th>SKU</th>
+                                            <th>Artículo</th>
+                                            <th style="width: 150px;">Cantidad</th>
+                                            <th class="text-center">Quitar</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="traspaso-carrito-body">
+                                        <tr><td colspan="4" class="text-center py-4 text-muted">No hay artículos agregados al camión</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Panel Derecho: Configuración del Envío -->
+                <div class="col-lg-4">
+                    <div class="card shadow-sm border-0 bg-light">
+                        <div class="card-body">
+                            <h5 class="fw-bold mb-4">Datos del Envío</h5>
+
+                            <div class="mb-3" id="div-almacen-origen">
+                                <label class="form-label text-muted small fw-bold">Almacén Origen</label>
+                                <select id="traspaso-origen" class="form-select">
+                                    <option value="">Cargando almacenes...</option>
+                                </select>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label text-muted small fw-bold">Almacén Destino</label>
+                                <select id="traspaso-destino" class="form-select">
+                                    <option value="">Cargando almacenes...</option>
+                                </select>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label text-muted small fw-bold">Flujo de Trabajo</label>
+                                <select id="traspaso-flujo" class="form-select">
+                                    <option value="">Seleccione un flujo...</option>
+                                    <option value="TRASPASO-INTERNO">Traspaso Interno Estándar</option>
+                                    <option value="TRASPASO-URGENTE">Traspaso Urgente Extraordinario</option>
+                                </select>
+                                <small class="text-muted d-block mt-1">Requerido para la trazabilidad correcta en el Kardex.</small>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label text-muted small fw-bold">Notas Adicionales (Opcional)</label>
+                                <textarea id="traspaso-notas" class="form-control" rows="2" placeholder="Ej. Envío con el chófer Juan, caja azul."></textarea>
+                            </div>
+
+                            <div class="form-check form-switch mb-4 p-3 bg-white border rounded shadow-sm">
+                                <input class="form-check-input ms-0 me-2" type="checkbox" id="traspaso-directo" style="transform: scale(1.3);">
+                                <label class="form-check-label fw-bold text-danger" for="traspaso-directo">
+                                    Recepción Inmediata (Directa)
+                                </label>
+                                <small class="d-block text-muted mt-1" style="margin-left: 2.8rem;">
+                                    El stock ingresará al destino instantáneamente sin requerir confirmación física.
+                                </small>
+                            </div>
+
+                            <button id="btn-enviar-traspaso" class="btn btn-primary btn-lg w-100 fw-bold">
+                                <i class="bi bi-send-check"></i> PROCESAR ENVÍO
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ========================================== -->
+        <!-- PESTAÑA 2: RECEPCIONES PENDIENTES          -->
+        <!-- ========================================== -->
+        <div class="tab-pane fade" id="pendientes" role="tabpanel">
+            <div class="card shadow-sm border-0">
+                <div class="card-body">
+                    <h5 class="fw-bold mb-3">Mercadería en Tránsito hacia mi Sucursal</h5>
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Boleta / Folio</th>
+                                    <th>Almacén Origen</th>
+                                    <th>Fecha de Envío</th>
+                                    <th>Detalle de Artículos</th>
+                                    <th class="text-end">Acción</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tabla-pendientes-body">
+                                <tr><td colspan="5" class="text-center py-4 text-muted">Cargando recepciones pendientes...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ========================================== -->
+<!-- MODAL INTERACTIVO: RECEPCIÓN Y DISCREPANCIAS -->
+<!-- ========================================== -->
+<div class="modal fade" id="modalRecepcion" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title">
+                    <i class="bi bi-clipboard-check"></i> Recepción Física de Mercadería 
+                    <span id="recepcion-folio-titulo" class="badge bg-light text-success ms-2"></span>
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            
+            <div class="modal-body bg-light">
+                <p class="text-muted mb-3">
+                    Valida físicamente cada ítem. Si la cantidad recibida no coincide o la mercadería no llegó, ajusta los valores correspondientes.
+                </p>
+                
+                <div class="card shadow-sm border-0 mb-3">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th class="text-center" style="width: 80px;">Llegó?</th>
+                                    <th>SKU</th>
+                                    <th>Artículo</th>
+                                    <th class="text-center">Esperado</th>
+                                    <th class="text-center" style="width: 150px;">Recibido</th>
+                                    <th>Observaciones / Discrepancia</th>
+                                </tr>
+                            </thead>
+                            <tbody id="detalle-recepcion-interactiva">
+                                <!-- Filas generadas por JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label fw-bold text-dark">Flujo de Ingreso al Kardex</label>
+                    <select id="recepcion-flujo" class="form-select form-select-lg border-success shadow-sm">
+                        <option value="">Seleccione el flujo correspondiente...</option>
+                        <option value="INGRESO-TRASPASO-REGULAR">Ingreso Regular de Traspaso</option>
+                    </select>
+                </div>
+                
+                <input type="hidden" id="recepcion-folio-oculto">
+            </div>
+            
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary fw-bold" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-success btn-lg fw-bold px-5" id="btn-confirmar-recepcion">
+                    <i class="bi bi-check2-circle"></i> INGRESAR AL KARDEX
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/traspasos.js"></script>
+{% endblock %}

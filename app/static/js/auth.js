@@ -37,12 +37,29 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 if (response.ok) {
                     const data = await response.json();
+                    const tokenAcceso = data.access_token;
                     
                     // Guardamos el token JWT de acceso en el almacenamiento local del navegador
-                    localStorage.setItem('erp_token', data.access_token);
+                    localStorage.setItem('erp_token', tokenAcceso);
                     
-                    // Redirigimos al usuario a la pantalla del Kardex (o al menú principal)
-                    window.location.href = '/vistas/dashboard';
+                    // --- NUEVO: REDIRECCIÓN INTELIGENTE BASADA EN ROL ---
+                    try {
+                        // Extraemos el payload del token (la parte del medio)
+                        const payloadBase64 = tokenAcceso.split('.')[1];
+                        const payloadDecodificado = JSON.parse(atob(payloadBase64));
+                        
+                        // Evaluamos el rol y redirigimos
+                        if (payloadDecodificado.rol === "ADMIN") {
+                            window.location.href = '/vistas/dashboard';
+                        } else {
+                            window.location.href = '/vistas/pos'; // <-- Asegúrate de que esta sea la ruta real de tu POS
+                        }
+                    } catch (e) {
+                        console.error("No se pudo decodificar el rol, mandando a inicio...", e);
+                        window.location.href = '/vistas/dashboard';
+                    }
+                    // ----------------------------------------------------
+
                 } else {
                     const errorData = await response.json();
                     mostrarError(errorData.detail || "Credenciales incorrectas");

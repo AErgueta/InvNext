@@ -22,14 +22,35 @@
     }
 </style>
 
-<div class="container-fluid mt-4">
+<!-- ========================================== -->
+<!-- NUEVA BARRA DE NAVEGACIÓN SUPERIOR         -->
+<!-- ========================================== -->
+<nav class="navbar navbar-dark bg-primary shadow-sm mb-4">
+    <div class="container-fluid px-4">
+        <a class="navbar-brand fw-bold" href="#">
+            <i class="bi bi-shop"></i> Mi Empresa - POS
+        </a>
+        <div class="d-flex align-items-center">
+            <div class="text-white me-4 text-end">
+                <span class="fw-bold"><i class="bi bi-person-circle"></i> <span id="pos-nombre-usuario">Cargando...</span></span>
+                <small class="d-block text-white-50" style="font-size: 0.75rem;" id="pos-sucursal-info"></small>
+            </div>
+            <button class="btn btn-outline-light btn-sm" onclick="cerrarSesionPOS()">
+                <i class="bi bi-box-arrow-right"></i> Cerrar Sesión
+            </button>
+        </div>
+    </div>
+</nav>
+
+<!-- Modifiqué el mt-4 por mt-2 ya que el navbar trae su propio margen inferior -->
+<div class="container-fluid mt-2">
     <div class="row align-items-center mb-4">
         <div class="col-md-8">
             <h2 class="text-primary fw-bold mb-1">Punto de Venta (POS)</h2>
             <p class="text-muted mb-0">Módulo de facturación y salida de mercadería.</p>
         </div>
         <div class="col-md-4 text-end">
-            <!-- NUEVO BOTÓN DE CIERRE DE CAJA -->
+            <!-- BOTÓN DE CIERRE DE CAJA -->
             <button class="btn btn-outline-danger shadow-sm fw-bold" id="btn-mostrar-cierre">
                 <i class="bi bi-lock-fill"></i> Cierre de Caja
             </button>
@@ -42,7 +63,7 @@
             <div class="card shadow-sm mb-4 border-0">
                 <div class="card-body">
                     
-                    <!-- NUEVO: Contenedor de Búsqueda Inteligente -->
+                    <!-- Contenedor de Búsqueda Inteligente -->
                     <div class="position-relative mb-3">
                         <div class="input-group">
                             <span class="input-group-text bg-white"><i class="bi bi-upc-scan text-primary fs-5"></i></span>
@@ -97,12 +118,7 @@
                         <input type="text" id="pos-documento" class="form-control text-uppercase" value="S/N">
                     </div>
 
-                    <div class="mb-3">
-                        <label class="form-label text-muted small fw-bold">Almacén de Origen</label>
-                        <select id="pos-almacen" class="form-select">
-                            <option value="ALM-CENTRAL">Almacén Central</option>
-                        </select>
-                    </div>
+                    <!-- El campo Almacén ya fue eliminado de esta versión -->
 
                     <div class="mb-3">
                         <label class="form-label text-muted small fw-bold">Flujo de Seguimiento</label>
@@ -122,7 +138,7 @@
                     </div>
 
                     <!-- ========================================== -->
-                    <!-- NUEVA SECCIÓN: MÉTODO DE PAGO Y VUELTO     -->
+                    <!-- SECCIÓN: MÉTODO DE PAGO Y VUELTO           -->
                     <!-- ========================================== -->
                     <div class="mb-3 border-top pt-3">
                         <label class="form-label text-muted small fw-bold">Método de Pago</label>
@@ -219,7 +235,6 @@
                     <input type="number" id="input-monto-cierre" class="form-control form-control-lg text-end fs-4 text-danger" min="0" step="0.5" value="0">
                 </div>
 
-                <!-- NUEVO: ALERTA DE DESCUADRE (Oculto por defecto) -->
                 <div id="alerta-descuadre" class="alert alert-warning d-none mt-3 mb-0">
                     <i class="bi bi-exclamation-triangle-fill"></i> <strong>¡Atención!</strong> <span id="texto-descuadre"></span>
                     <div class="form-check mt-3">

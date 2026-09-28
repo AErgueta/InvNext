@@ -105,3 +105,11 @@ async def vista_articulos(request: Request):
         name="articulos.hbs",
         context={"mostrar_menu": True}
     )
+
+@router.get("/traspasos")
+async def vista_traspasos(request: Request):
+    return templates.TemplateResponse(
+        request=request, 
+        name="traspasos.hbs", 
+        context={"request": request, "mostrar_menu": True} # <-- Agregamos mostrar_menu
+    )

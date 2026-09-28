@@ -16,7 +16,10 @@ class UsuarioCreate(BaseModel):
     username: str
     password: str
     rol: RolUsuario = RolUsuario.OPERADOR
-    codigo_almacen: str | None = None
+    # --- NUEVOS CAMPOS DE ASIGNACIÓN ---
+    sucursal_id: str | None = None
+    caja_id: str | None = None
+    almacen_id: str | None = None
 
 class EstadoUsuario(BaseModel):
     activo: bool
@@ -39,9 +42,9 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
     if not usuario.activo:
         raise HTTPException(status_code=400, detail="Usuario inactivo")
         
-    # Metemos datos clave en el token para no tener que consultar la BD a cada rato
+    # El token se mantiene ligero; el frontend buscará los detalles en /me
     token = crear_token_acceso(
-        data={"sub": usuario.username, "rol": usuario.rol, "almacen": usuario.codigo_almacen}
+        data={"sub": usuario.username, "rol": usuario.rol}
     )
     return {"access_token": token, "token_type": "bearer"}
 
@@ -64,11 +67,34 @@ async def obtener_usuario_actual(token: str = Depends(oauth2_scheme)) -> Usuario
         
     return usuario
 
+# ==========================================
+# NUEVO: ENDPOINT DE PERFIL DEL USUARIO
+# ==========================================
+@router.get("/me", status_code=status.HTTP_200_OK)
+async def obtener_perfil(usuario_actual: Usuario = Depends(obtener_usuario_actual)):
+    """
+    Devuelve los datos operativos del usuario para configurar el POS.
+    """
+    # Validación estricta para Operadores/Cajeros:
+    if usuario_actual.rol != RolUsuario.ADMIN:
+        if not usuario_actual.caja_id or not usuario_actual.sucursal_id or not usuario_actual.almacen_id:
+            raise HTTPException(
+                status_code=403, 
+                detail="Tu usuario no tiene una caja, sucursal o almacén asignado. Contacta al administrador."
+            )
+            
+    return {
+        "username": usuario_actual.username,
+        "rol": usuario_actual.rol,
+        "sucursal_id": usuario_actual.sucursal_id,
+        "caja_id": usuario_actual.caja_id,
+        "almacen_id": usuario_actual.almacen_id
+    }
 
 @router.post("/registrar", status_code=status.HTTP_201_CREATED)
 async def registrar_usuario(
     datos: UsuarioCreate,
-    usuario_actual: Usuario = Depends(obtener_usuario_actual) # <--- EL GUARDIA PROTEGIENDO EL REGISTRO
+    usuario_actual: Usuario = Depends(obtener_usuario_actual)
 ):
     # 0. Validamos que solo un ADMIN pueda crear otros usuarios
     if usuario_actual.rol != RolUsuario.ADMIN:
@@ -90,7 +116,9 @@ async def registrar_usuario(
         username=datos.username,
         hashed_password=hash_pass,
         rol=datos.rol,
-        codigo_almacen=datos.codigo_almacen
+        sucursal_id=datos.sucursal_id,
+        caja_id=datos.caja_id,
+        almacen_id=datos.almacen_id
     )
     await nuevo_usuario.insert()
     

@@ -35,16 +35,17 @@ const formatearMoneda = (valor) => {
 // ==========================================
 // CONTROL DE SESIÓN DE CAJA MULTISUCURSAL
 // ==========================================
-// TODO: Estos valores deberían venir del login del usuario o de un selector previo
-const CONTEXTO_ACTUAL = {
-    sucursal_id: "SUC-CENTRAL", // Valor temporal para pruebas
-    caja_id: "CAJA-01-CENTRAL"  // Valor temporal para pruebas
+let CONTEXTO_ACTUAL = {
+    sucursal_id: "", 
+    caja_id: "",
+    almacen_id: ""
 };
 
 let sesionCajaActiva = false;
 const modalApertura = new bootstrap.Modal(document.getElementById('modalAperturaCaja'));
 const modalCierre = new bootstrap.Modal(document.getElementById('modalCierreCaja'));
 
+// --- AQUÍ ESTÁ LA FUNCIÓN QUE BORRAMOS POR ACCIDENTE ---
 async function verificarEstadoCaja() {
     try {
         const response = await fetch(`/cajas/${CONTEXTO_ACTUAL.caja_id}/estado`);
@@ -64,9 +65,51 @@ async function verificarEstadoCaja() {
         console.error("Error al verificar estado de la caja:", error);
     }
 }
+// -------------------------------------------------------
 
-// Ejecutar al iniciar la pantalla
-document.addEventListener('DOMContentLoaded', verificarEstadoCaja);
+async function inicializarPOS() {
+    const token = localStorage.getItem("erp_token");
+    if (!token) {
+        alert("Sesión expirada o no iniciada.");
+        window.location.href = "/vistas/login"; 
+        return;
+    }
+
+    try {
+        const resPerfil = await fetch('/me', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (!resPerfil.ok) {
+            const errorData = await resPerfil.json();
+            alert(errorData.detail || "Error cargando tu perfil operativo.");
+            return;
+        }
+
+        const perfil = await resPerfil.json();
+        
+        CONTEXTO_ACTUAL.sucursal_id = perfil.sucursal_id;
+        CONTEXTO_ACTUAL.caja_id = perfil.caja_id;
+        CONTEXTO_ACTUAL.almacen_id = perfil.almacen_id;
+
+        // --- LAS DOS LÍNEAS QUE ACTUALIZAN LA BARRA AZUL (Con protección) ---
+        const nombreMostrar = perfil.username ? perfil.username.toUpperCase() : "USUARIO";
+        document.getElementById('pos-nombre-usuario').textContent = nombreMostrar;
+        document.getElementById('pos-sucursal-info').textContent = `${perfil.sucursal_id} | ${perfil.caja_id}`;
+
+        console.log("POS Inicializado para:", perfil.username, "| Almacén:", perfil.almacen_id);
+
+        // Ahora sí, llamamos a la función que ya existe
+        await verificarEstadoCaja();
+
+    } catch (error) {
+        console.error("Error al inicializar el POS:", error);
+        alert("Hubo un problema al conectar con el servidor para cargar tu perfil.");
+    }
+}
+
+document.addEventListener('DOMContentLoaded', inicializarPOS);
+
 
 // --- ACCIÓN: ABRIR CAJA ---
 document.getElementById('btn-abrir-caja').addEventListener('click', async () => {
@@ -204,7 +247,10 @@ inputBuscador.addEventListener('input', (e) => {
     timeoutBusqueda = setTimeout(async () => {
         try {
             const token = localStorage.getItem("erp_token"); 
-            const response = await fetch(`/articulos/buscar?q=${encodeURIComponent(query)}`, {
+            
+            // --- CAMBIO AQUÍ: Agregamos el almacen_id a la URL ---
+            const url = `/articulos/buscar?q=${encodeURIComponent(query)}&almacen_id=${CONTEXTO_ACTUAL.almacen_id}`;
+            const response = await fetch(url, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             
@@ -225,7 +271,10 @@ inputBuscador.addEventListener('input', (e) => {
                                 <span class="text-wrap">${art.nombre}</span>
                                 ${art.codigo_barras ? `<br><small class="text-muted"><i class="bi bi-upc"></i> ${art.codigo_barras}</small>` : ''}
                             </div>
-                            <span class="badge bg-success rounded-pill">$${art.precio_venta || 0}</span>
+                            <span class="badge bg-success rounded-pill">Bs. ${art.precio_venta || 0}</span>
+                        </div>
+                        <div class="text-muted small mt-1">
+                            Stock en tu sucursal: <strong class="${art.stock_en_almacen > 0 ? 'text-success' : 'text-danger'}">${art.stock_en_almacen || 0}</strong>
                         </div>
                     </a>`;
                     
@@ -262,7 +311,10 @@ inputBuscador.addEventListener('keypress', async (e) => {
         if(query) {
             try {
                 const token = localStorage.getItem("erp_token");
-                const response = await fetch(`/articulos/buscar?q=${encodeURIComponent(query)}`, {
+                
+                // --- CAMBIO AQUÍ: Agregamos el almacen_id a la URL ---
+                const url = `/articulos/buscar?q=${encodeURIComponent(query)}&almacen_id=${CONTEXTO_ACTUAL.almacen_id}`;
+                const response = await fetch(url, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
                 
@@ -296,6 +348,7 @@ document.addEventListener('click', (e) => {
         dropdownResultados.classList.remove('show');
     }
 });
+
 
 // ==========================================
 // GESTIÓN DEL CARRITO Y MATEMÁTICAS 
@@ -479,7 +532,7 @@ btnCobrar.addEventListener('click', async () => {
     const payloadVenta = {
         cliente: document.getElementById('pos-cliente').value,
         documento_cliente: document.getElementById('pos-documento').value,
-        almacen_origen: document.getElementById('pos-almacen').value,
+        almacen_origen: CONTEXTO_ACTUAL.almacen_id,
         flujo_trabajo_seleccionado: flujoSeleccionado,
         articulos: carrito,
         descuento_global: parseFloat(inputDescuento.value) || 0,
@@ -835,3 +888,15 @@ document.getElementById('btn-mostrar-cierre').addEventListener('click', () => {
     // modalCierre ya está definido al inicio de tu pos.js
     modalCierre.show(); 
 });
+
+// ==========================================
+// CERRAR SESIÓN
+// ==========================================
+function cerrarSesionPOS() {
+    if(confirm("¿Estás seguro de que deseas salir del Punto de Venta?")) {
+        // Borramos el token de seguridad
+        localStorage.removeItem("erp_token");
+        // Lo mandamos a la pantalla de login
+        window.location.href = "/vistas/login";
+    }
+}

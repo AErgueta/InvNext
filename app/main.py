@@ -4,7 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from app.database import init_db
 
 # Importamos todos nuestros enrutadores (¡Agregamos 'vistas' al final!)
-from app.routers import articulos, movimientos, lotes, reportes, proveedores, ordenes_compra, almacenes, auth, gobernanza, clientes, ventas, vistas, cajas
+from app.routers import articulos, movimientos, lotes, reportes, proveedores, ordenes_compra, almacenes, auth, gobernanza, clientes, ventas, vistas, cajas, traspasos
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -45,3 +45,4 @@ app.include_router(ventas.router)
 # 3. Conectamos las rutas del Frontend
 app.include_router(vistas.router)
 app.include_router(cajas.router)
+app.include_router(traspasos.router)

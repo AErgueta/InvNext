@@ -294,27 +294,42 @@ async def buscar_por_codigo_barras(codigo: str):
     return articulo
 
 @router.get("/buscar", status_code=status.HTTP_200_OK)
-async def buscar_articulo_dinamico(q: str):
+async def buscar_articulo_dinamico(q: str, almacen_id: Optional[str] = None):
     """
     Busca artículos para el Punto de Venta y Autocompletado del Kardex.
-    Busca por SKU, Nombre (coincidencia parcial) o Código de Barras (exacto).
+    Filtra dinámicamente el stock si se provee el almacen_id.
     """
-    # Consulta optimizada para MongoDB / Beanie
     query = {
         "$or": [
             {"sku": {"$regex": q, "$options": "i"}},
             {"nombre": {"$regex": q, "$options": "i"}},
-            {"codigo_barras": q}  # Coincidencia exacta para el lector láser
+            {"codigo_barras": q}
         ]
     }
     
-    # Limitamos a 10 resultados para que la respuesta sea instantánea
     resultados = await Articulo.find(query).limit(10).to_list()
 
-
+    # Si el frontend envía el almacén desde donde están buscando,
+    # calculamos exactamente cuánto stock físico hay en esa sucursal
+    if almacen_id:
+        resultados_procesados = []
+        for art in resultados:
+            art_dict = art.model_dump()
+            
+            # Sumamos las existencias específicas de ese almacén
+            stock_en_este_almacen = 0
+            if getattr(art, "stock_por_almacen", None):
+                for stock_alm in art.stock_por_almacen:
+                    if stock_alm.codigo_almacen == almacen_id:
+                        stock_en_este_almacen = stock_alm.cantidad
+                        break
+            
+            # Inyectamos el valor calculado para que el frontend lo lea
+            art_dict["stock_en_almacen"] = stock_en_este_almacen
+            resultados_procesados.append(art_dict)
+            
+        return resultados_procesados
     
-    # Devolvemos siempre la lista (aunque esté vacía) 
-    # para que el frontend maneje el "No encontrado" sin lanzar errores HTTP
     return resultados
 
 

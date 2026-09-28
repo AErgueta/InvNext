@@ -6,6 +6,8 @@
     <title>InvNext - Sistema de Gestión</title>
     <!-- Bootstrap 5 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons (Necesario para el ícono de Salir) -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
 </head>
 <body class="bg-light">
 
@@ -31,9 +33,20 @@
                     <!-- Más enlaces originales -->
                     <li class="nav-item"><a class="nav-link" href="/vistas/alertas">Alertas</a></li>
                     <li class="nav-item"><a class="nav-link" href="/vistas/vencimientos">Vencimientos</a></li>
+
+                    <!-- Enlace directo a Traspasos -->
+                    <li class="nav-item"><a class="nav-link text-info" href="/vistas/traspasos">Traspasos</a></li>
                 </ul>
-                <div class="d-flex">
-                    <button class="btn btn-outline-danger btn-sm" onclick="cerrarSesion()">Cerrar Sesión</button>
+                <div class="d-flex align-items-center">
+                    <!-- Insignia del Usuario -->
+                    <div id="user-info-badge" class="text-end me-3" style="display: none !important;">
+                        <span class="d-block fw-bold text-light" id="layout-username" style="font-size: 0.9rem;"></span>
+                        <span class="badge bg-primary" id="layout-almacen"></span>
+                    </div>
+                    
+                    <button class="btn btn-outline-danger btn-sm" onclick="cerrarSesion()">
+                        <i class="bi bi-box-arrow-right"></i> Salir
+                    </button>
                 </div>
             </div>
         </div>
@@ -49,9 +62,55 @@
 
     <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <!-- Tu script global para manejar el login y tokens -->
+    
+    <!-- Tu script global para manejar auth.js -->
     <script src="/static/js/auth.js"></script>
     
+    <!-- Script unificado para la barra de navegación -->
+    <script>
+        async function cargarIdentidadGlobal() {
+            const token = localStorage.getItem("erp_token");
+            if (!token) return;
+
+            try {
+                const res = await fetch('/me', { 
+                    headers: { 'Authorization': `Bearer ${token}` } 
+                });
+                
+                if (res.ok) {
+                    const perfil = await res.json();
+                    
+                    const nombreUsuario = perfil.username ? perfil.username.toUpperCase() : 'USUARIO';
+                    const nombreAlmacen = perfil.almacen_id || perfil.codigo_almacen || 'ADMIN';
+                    
+                    const spanUsuario = document.getElementById('layout-username');
+                    const spanAlmacen = document.getElementById('layout-almacen');
+                    const badgeInfo = document.getElementById('user-info-badge');
+
+                    if (spanUsuario) spanUsuario.textContent = nombreUsuario;
+                    if (spanAlmacen) spanAlmacen.textContent = nombreAlmacen;
+                    if (badgeInfo) badgeInfo.style.setProperty('display', 'block', 'important');
+                    
+                } else if (res.status === 401) {
+                    // Solo cerramos sesión si el token es rechazado (401 No Autorizado)
+                    cerrarSesion();
+                } else {
+                    // Registramos otros errores (ej. 500) en consola sin expulsar al usuario
+                    console.error("Error del servidor al cargar perfil:", await res.text());
+                }
+            } catch (error) {
+                console.error("Error al cargar la identidad:", error);
+            }
+        }
+
+        function cerrarSesion() {
+            localStorage.removeItem("erp_token");
+            window.location.href = "/vistas/login";
+        }
+
+        document.addEventListener('DOMContentLoaded', cargarIdentidadGlobal);
+    </script>
+
     <!-- Bloque para scripts específicos de cada pantalla -->
     {% block scripts %}
     {% endblock %}

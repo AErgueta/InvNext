@@ -18,6 +18,7 @@ from app.models.cuenta_corriente import CuentaCorriente
 from app.models.sucursal import Sucursal
 from app.models.caja import Caja
 from app.models.sesion_caja import SesionCaja
+from app.models.traspaso import TraspasoInventario
 
 load_dotenv()
 
@@ -46,7 +47,8 @@ async def init_db():
             CuentaCorriente,
             Sucursal,
             Caja,
-            SesionCaja
+            SesionCaja,
+            TraspasoInventario
         ] 
     )
     print(f"Conexión exitosa a la base de datos: {DATABASE_NAME}")
