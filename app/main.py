@@ -1,6 +1,10 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from fastapi.responses import JSONResponse
+from fastapi.templating import Jinja2Templates
+
 from app.database import init_db
 
 # Importamos todos nuestros enrutadores (¡Agregamos 'vistas' al final!)
@@ -17,6 +21,28 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan
 )
+
+# ==========================================
+# INTERCEPTOR GLOBAL DE ERRORES (PANTALLA 403)
+# ==========================================
+error_templates = Jinja2Templates(directory="app/templates")
+
+@app.exception_handler(StarletteHTTPException)
+async def custom_http_exception_handler(request: Request, exc: StarletteHTTPException):
+    # Si el error es 403 (Prohibido) y el usuario intentaba cargar una vista web
+    if exc.status_code == 403 and request.url.path.startswith("/vistas/"):
+        return error_templates.TemplateResponse(
+            request=request,
+            name="error_403.hbs",
+            context={"mostrar_menu": True},
+            status_code=403
+        )
+        
+    # Si es una petición interna de API o cualquier otro error, devuelve el JSON estándar
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail}
+    )
 
 # 1. Exponer la carpeta static (para que lea el CSS y JS del frontend)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")

@@ -48,10 +48,10 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
     )
     return {"access_token": token, "token_type": "bearer"}
 
-# --- EL GUARDIA DE SEGURIDAD ---
+# --- EL GUARDIA DE SEGURIDAD BÁSICO ---
 async def obtener_usuario_actual(token: str = Depends(oauth2_scheme)) -> Usuario:
     """
-    Ponemos esta dependencia en cualquier ruta que queramos proteger.
+    Ponemos esta dependencia en cualquier ruta que requiera un usuario logueado.
     """
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
@@ -66,6 +66,19 @@ async def obtener_usuario_actual(token: str = Depends(oauth2_scheme)) -> Usuario
         raise HTTPException(status_code=401, detail="El usuario ya no existe")
         
     return usuario
+
+# --- EL GUARDIA DE SEGURIDAD ESTRICTO (NUEVO) ---
+async def obtener_usuario_admin(usuario_actual: Usuario = Depends(obtener_usuario_actual)) -> Usuario:
+    """
+    Ponemos esta dependencia en rutas sensibles (ej: recepcion-oc, configuraciones).
+    Verifica que el usuario actual tenga rol ADMIN.
+    """
+    if usuario_actual.rol != RolUsuario.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Acceso denegado: Se requieren privilegios de Administrador para esta acción."
+        )
+    return usuario_actual
 
 # ==========================================
 # NUEVO: ENDPOINT DE PERFIL DEL USUARIO
@@ -94,15 +107,10 @@ async def obtener_perfil(usuario_actual: Usuario = Depends(obtener_usuario_actua
 @router.post("/registrar", status_code=status.HTTP_201_CREATED)
 async def registrar_usuario(
     datos: UsuarioCreate,
-    usuario_actual: Usuario = Depends(obtener_usuario_actual)
+    usuario_actual: Usuario = Depends(obtener_usuario_admin) # <-- CAMBIO: Usa el nuevo guardia
 ):
-    # 0. Validamos que solo un ADMIN pueda crear otros usuarios
-    if usuario_actual.rol != RolUsuario.ADMIN:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Acceso denegado: Solo los administradores pueden dar de alta al nuevo personal."
-        )
-
+    # Ya no necesitamos el if manual, el guardia `obtener_usuario_admin` lo hace.
+    
     # 1. Verificamos que el usuario no exista ya
     existe = await Usuario.find_one(Usuario.username == datos.username)
     if existe:
@@ -128,18 +136,13 @@ async def registrar_usuario(
 async def cambiar_estado_usuario(
     username: str,
     estado: EstadoUsuario,
-    usuario_actual: Usuario = Depends(obtener_usuario_actual)
+    usuario_actual: Usuario = Depends(obtener_usuario_admin) # <-- CAMBIO: Usa el nuevo guardia
 ):
     """
     Activa o desactiva a un usuario.
     Solo accesible para Administradores.
     """
-    # 1. Validamos rol
-    if usuario_actual.rol != RolUsuario.ADMIN:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Acceso denegado: Solo los administradores pueden activar o desactivar usuarios."
-        )
+    # Ya no necesitamos el if manual
 
     # 2. Buscamos al usuario
     usuario = await Usuario.find_one(Usuario.username == username)

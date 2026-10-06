@@ -22,27 +22,6 @@
     }
 </style>
 
-<!-- ========================================== -->
-<!-- NUEVA BARRA DE NAVEGACIÓN SUPERIOR         -->
-<!-- ========================================== -->
-<nav class="navbar navbar-dark bg-primary shadow-sm mb-4">
-    <div class="container-fluid px-4">
-        <a class="navbar-brand fw-bold" href="#">
-            <i class="bi bi-shop"></i> Mi Empresa - POS
-        </a>
-        <div class="d-flex align-items-center">
-            <div class="text-white me-4 text-end">
-                <span class="fw-bold"><i class="bi bi-person-circle"></i> <span id="pos-nombre-usuario">Cargando...</span></span>
-                <small class="d-block text-white-50" style="font-size: 0.75rem;" id="pos-sucursal-info"></small>
-            </div>
-            <button class="btn btn-outline-light btn-sm" onclick="cerrarSesionPOS()">
-                <i class="bi bi-box-arrow-right"></i> Cerrar Sesión
-            </button>
-        </div>
-    </div>
-</nav>
-
-<!-- Modifiqué el mt-4 por mt-2 ya que el navbar trae su propio margen inferior -->
 <div class="container-fluid mt-2">
     <div class="row align-items-center mb-4">
         <div class="col-md-8">
@@ -117,8 +96,6 @@
                         <label class="form-label text-muted small fw-bold">Documento (NIT/CI)</label>
                         <input type="text" id="pos-documento" class="form-control text-uppercase" value="S/N">
                     </div>
-
-                    <!-- El campo Almacén ya fue eliminado de esta versión -->
 
                     <div class="mb-3">
                         <label class="form-label text-muted small fw-bold">Flujo de Seguimiento</label>

@@ -2,7 +2,7 @@
 // ESTADO GLOBAL DEL CARRITO
 // ==========================================
 let carrito = [];
-let totalVentaActual = 0; // Guardamos el total para calcular el cambio
+let totalVentaActual = 0;
 
 // ==========================================
 // ELEMENTOS DEL DOM
@@ -24,7 +24,6 @@ const inputReferencia = document.getElementById('pos-referencia');
 
 let timeoutBusqueda;
 
-// Utilidad para formatear moneda
 const formatearMoneda = (valor) => {
     return new Intl.NumberFormat('es-BO', { 
         minimumFractionDigits: 2, 
@@ -45,7 +44,6 @@ let sesionCajaActiva = false;
 const modalApertura = new bootstrap.Modal(document.getElementById('modalAperturaCaja'));
 const modalCierre = new bootstrap.Modal(document.getElementById('modalCierreCaja'));
 
-// --- AQUÍ ESTÁ LA FUNCIÓN QUE BORRAMOS POR ACCIDENTE ---
 async function verificarEstadoCaja() {
     try {
         const response = await fetch(`/cajas/${CONTEXTO_ACTUAL.caja_id}/estado`);
@@ -53,11 +51,9 @@ async function verificarEstadoCaja() {
         
         if (data.abierta) {
             sesionCajaActiva = true;
-            // Desbloquear interfaz
             inputBuscador.disabled = false;
         } else {
             sesionCajaActiva = false;
-            // Bloquear interfaz y forzar apertura
             inputBuscador.disabled = true;
             modalApertura.show();
         }
@@ -65,7 +61,6 @@ async function verificarEstadoCaja() {
         console.error("Error al verificar estado de la caja:", error);
     }
 }
-// -------------------------------------------------------
 
 async function inicializarPOS() {
     const token = localStorage.getItem("erp_token");
@@ -92,24 +87,19 @@ async function inicializarPOS() {
         CONTEXTO_ACTUAL.caja_id = perfil.caja_id;
         CONTEXTO_ACTUAL.almacen_id = perfil.almacen_id;
 
-        // --- LAS DOS LÍNEAS QUE ACTUALIZAN LA BARRA AZUL (Con protección) ---
-        const nombreMostrar = perfil.username ? perfil.username.toUpperCase() : "USUARIO";
-        document.getElementById('pos-nombre-usuario').textContent = nombreMostrar;
-        document.getElementById('pos-sucursal-info').textContent = `${perfil.sucursal_id} | ${perfil.caja_id}`;
+        // Se eliminaron las líneas que actualizaban los IDs antiguos de la barra del POS
+        // La identidad ahora la maneja automáticamente main.hbs
 
         console.log("POS Inicializado para:", perfil.username, "| Almacén:", perfil.almacen_id);
-
-        // Ahora sí, llamamos a la función que ya existe
         await verificarEstadoCaja();
 
     } catch (error) {
         console.error("Error al inicializar el POS:", error);
-        alert("Hubo un problema al conectar con el servidor para cargar tu perfil.");
+        alert("Hubo un problema al conectar con el servidor para cargar tu perfil operativo.");
     }
 }
 
 document.addEventListener('DOMContentLoaded', inicializarPOS);
-
 
 // --- ACCIÓN: ABRIR CAJA ---
 document.getElementById('btn-abrir-caja').addEventListener('click', async () => {
@@ -170,20 +160,12 @@ document.getElementById('btn-procesar-cierre').addEventListener('click', async (
         
         if (response.ok) {
             if (data.requiere_confirmacion) {
-                // EL BACKEND DETUVO EL CIERRE. MOSTRAR ALERTA PARA RECTIFICAR.
                 document.getElementById('alerta-descuadre').classList.remove('d-none');
                 document.getElementById('texto-descuadre').innerText = data.mensaje;
-                // Desmarcar el check por seguridad
                 document.getElementById('check-confirmar-diferencia').checked = false;
             } else {
-                // EL CIERRE FUE EXITOSO (Cuadre perfecto o diferencia confirmada)
                 modalCierre.hide();
-                // alert(`Arqueo Exitoso.\n\nSistema: Bs. ${formatearMoneda(data.monto_calculado_sistema)}\nDeclarado: Bs. ${formatearMoneda(data.monto_declarado_cajero)}\nDiferencia: Bs. ${formatearMoneda(data.diferencia)}\nEstado: ${data.cuadre}`);
-                
-                // MANDAR A IMPRIMIR EL REPORTE Z
                 imprimirReporteCierre(data);
-
-                // RECARGAR CON RETRASO
                 setTimeout(() => {
                     window.location.reload(); 
                 }, 1500);
@@ -196,12 +178,10 @@ document.getElementById('btn-procesar-cierre').addEventListener('click', async (
     }
 });
 
-// Ocultar alerta de descuadre si el usuario modifica el monto (significa que está rectificando)
 document.getElementById('input-monto-cierre').addEventListener('input', () => {
     document.getElementById('alerta-descuadre').classList.add('d-none');
     document.getElementById('check-confirmar-diferencia').checked = false;
 });
-
 
 // ==========================================
 // EFECTOS DE SONIDO (NATIVO DEL NAVEGADOR)
@@ -248,7 +228,6 @@ inputBuscador.addEventListener('input', (e) => {
         try {
             const token = localStorage.getItem("erp_token"); 
             
-            // --- CAMBIO AQUÍ: Agregamos el almacen_id a la URL ---
             const url = `/articulos/buscar?q=${encodeURIComponent(query)}&almacen_id=${CONTEXTO_ACTUAL.almacen_id}`;
             const response = await fetch(url, {
                 headers: { 'Authorization': `Bearer ${token}` }
@@ -312,7 +291,6 @@ inputBuscador.addEventListener('keypress', async (e) => {
             try {
                 const token = localStorage.getItem("erp_token");
                 
-                // --- CAMBIO AQUÍ: Agregamos el almacen_id a la URL ---
                 const url = `/articulos/buscar?q=${encodeURIComponent(query)}&almacen_id=${CONTEXTO_ACTUAL.almacen_id}`;
                 const response = await fetch(url, {
                     headers: { 'Authorization': `Bearer ${token}` }
@@ -348,7 +326,6 @@ document.addEventListener('click', (e) => {
         dropdownResultados.classList.remove('show');
     }
 });
-
 
 // ==========================================
 // GESTIÓN DEL CARRITO Y MATEMÁTICAS 
@@ -482,7 +459,6 @@ function actualizarVista(skuDestacado = null) {
 
 inputDescuento.addEventListener('input', actualizarVista);
 
-// Control visual del Método de Pago
 selectMetodoPago.addEventListener('change', (e) => {
     const metodo = e.target.value;
     if (metodo === 'EFECTIVO') {
@@ -506,7 +482,6 @@ function calcularCambio() {
     
     textCambio.textContent = formatearMoneda(cambio > 0 ? cambio : 0);
 
-    // Bloquear el cobro si es efectivo y el pago no alcanza (o si el carrito está vacío)
     if (carrito.length === 0 || (recibido < totalVentaActual && totalVentaActual > 0)) {
         textCambio.classList.replace('text-primary', 'text-danger');
         btnCobrar.disabled = true;
@@ -540,7 +515,6 @@ btnCobrar.addEventListener('click', async () => {
         metodo_pago: selectMetodoPago.value,
         efectivo_recibido: selectMetodoPago.value === 'EFECTIVO' ? (parseFloat(inputRecibido.value) || 0) : totalVentaActual,
         referencia_pago: selectMetodoPago.value !== 'EFECTIVO' ? inputReferencia.value : "N/A",
-        // --- NUEVOS CAMPOS: MULTISUCURSAL ---
         sucursal_id: CONTEXTO_ACTUAL.sucursal_id,
         caja_id: CONTEXTO_ACTUAL.caja_id
     };
@@ -571,7 +545,6 @@ btnCobrar.addEventListener('click', async () => {
 
         reproducirBeep(true); 
 
-        // Modificamos para enviar el dinero recibido al ticket
         imprimirTicket(
             dataVenta.folio,
             document.getElementById('pos-cliente').value,
@@ -582,7 +555,6 @@ btnCobrar.addEventListener('click', async () => {
             selectMetodoPago.value
         );
         
-        // Reset de caja
         carrito = [];
         actualizarVista();
         document.getElementById('pos-cliente').value = "Cliente Mostrador";
@@ -598,7 +570,6 @@ btnCobrar.addEventListener('click', async () => {
         console.error(error);
     } finally {
         btnCobrar.innerHTML = '<i class="bi bi-cash-coin"></i> PROCESAR COBRO';
-        // La validación de botones la hace actualizarVista
     }
 });
 
@@ -727,7 +698,6 @@ function imprimirTicket(folio, cliente, documento, carrito, descuentoGlobal, rec
 function imprimirReporteCierre(datosCierre) {
     const ventanaImpresion = window.open('', '_blank', 'width=400,height=600');
     
-    // Validación de seguridad para navegadores estrictos (ej. Brave)
     if (!ventanaImpresion) {
         alert("⚠️ ATENCIÓN: El navegador bloqueó el ticket. Por favor, permite las ventanas emergentes para este sitio en la barra de direcciones.");
         return false;
@@ -850,7 +820,6 @@ function imprimirReporteCierre(datosCierre) {
 // ATAJOS DE TECLADO GLOBALES
 // ==========================================
 document.addEventListener('keydown', (e) => {
-    // Evitamos que las teclas 'F' recarguen la página o hagan acciones nativas del navegador (excepto F5)
     if (['F2', 'F4', 'F8', 'F12'].includes(e.key)) {
         e.preventDefault();
     }
@@ -858,7 +827,7 @@ document.addEventListener('keydown', (e) => {
     switch (e.key) {
         case 'F2':
             inputBuscador.focus();
-            inputBuscador.select(); // Selecciona el texto si ya había algo escrito
+            inputBuscador.select();
             break;
         case 'F4':
             selectMetodoPago.focus();
@@ -883,20 +852,6 @@ document.addEventListener('keydown', (e) => {
     }
 });
 
-// --- ACCIÓN: MOSTRAR MODAL DE CIERRE ---
 document.getElementById('btn-mostrar-cierre').addEventListener('click', () => {
-    // modalCierre ya está definido al inicio de tu pos.js
     modalCierre.show(); 
 });
-
-// ==========================================
-// CERRAR SESIÓN
-// ==========================================
-function cerrarSesionPOS() {
-    if(confirm("¿Estás seguro de que deseas salir del Punto de Venta?")) {
-        // Borramos el token de seguridad
-        localStorage.removeItem("erp_token");
-        // Lo mandamos a la pantalla de login
-        window.location.href = "/vistas/login";
-    }
-}

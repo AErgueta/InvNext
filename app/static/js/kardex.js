@@ -131,14 +131,12 @@ document.getElementById('btn-consultar-kardex').addEventListener('click', async 
     const token = obtenerToken();
     if (!token) return;
 
-    // 1. CAPTURAMOS EL BOTÓN AL INICIO (Para no perder su estado original)
     const btnConsultar = document.getElementById('btn-consultar-kardex');
     const textoOriginalBtn = btnConsultar.innerHTML;
 
     let sku = document.getElementById('input-sku').value.trim();
     const inputBusquedaTexto = document.getElementById('input-busqueda').value.trim();
         
-    // 2. AUTO-RESOLVER SI USAN ESCÁNER O TEXTO MANUAL SIN ELEGIR DE LA LISTA
     if (!sku) {
         if (inputBusquedaTexto) {
             btnConsultar.disabled = true;
@@ -152,29 +150,26 @@ document.getElementById('btn-consultar-kardex').addEventListener('click', async 
                 if (response.ok) {
                     const resultados = await response.json();
                     if (resultados && resultados.length > 0) {
-                        // ¡Encontrado!
                         sku = resultados[0].sku;
                         seleccionarArticulo(sku, `${sku} - ${resultados[0].nombre}`);
                     } else {
-                        // No existe
                         alert(`❌ No se encontró ningún artículo: ${inputBusquedaTexto}`);
                         btnConsultar.disabled = false;
                         btnConsultar.innerHTML = textoOriginalBtn;
-                        return; // DETENER AQUÍ
+                        return;
                     }
                 } else {
-                    // El endpoint devolvió un error (Ej. 404 o 500)
                     console.error("Fallo en el endpoint de búsqueda");
                     alert("Error al conectar con la búsqueda de artículos.");
                     btnConsultar.disabled = false;
                     btnConsultar.innerHTML = textoOriginalBtn;
-                    return; // DETENER AQUÍ
+                    return;
                 }
             } catch (error) {
                 console.error("Error buscando código:", error);
                 btnConsultar.disabled = false;
                 btnConsultar.innerHTML = textoOriginalBtn;
-                return; // DETENER AQUÍ
+                return;
             }
         } else {
             alert("Por favor, busca un artículo o escanea su código de barras primero.");
@@ -182,7 +177,6 @@ document.getElementById('btn-consultar-kardex').addEventListener('click', async 
         }
     }
 
-    // 3. CONTINUAR CON KARDEX (Si llegamos aquí, sí tenemos un SKU válido)
     const inputInicio = document.getElementById('fecha-inicio').value;
     const inputFin = document.getElementById('fecha-fin').value;
 
@@ -193,7 +187,6 @@ document.getElementById('btn-consultar-kardex').addEventListener('click', async 
 
     const inputAlmacen = document.getElementById('filtro_almacen').value;
     
-    // Cambiamos el texto para la segunda fase
     btnConsultar.disabled = true;
     btnConsultar.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Buscando Kardex...';
 
@@ -260,20 +253,38 @@ document.getElementById('btn-consultar-kardex').addEventListener('click', async 
                     saldoActual -= mov.cantidad;
                 }
 
-                const colorFondo = ingreso > 0 ? '#e8f5e9' : '#ffebee';
-                const colorTexto = ingreso > 0 ? 'green' : 'red';
+                // Lógica de "Semáforo" para discrepancias
+                // Evaluamos si el concepto contiene palabras clave o si el backend envía un flag (aquí simulamos por concepto)
+                let rowStyle = "";
+                let conceptoDisplay = mov.concepto;
+                let iconoDiscrepancia = "";
+
+                if (mov.concepto && mov.concepto.toLowerCase().includes("discrepancia")) {
+                    rowStyle = "background-color: #fff3cd; border-left: 4px solid #ffc107;"; // Amarillo de advertencia
+                    iconoDiscrepancia = `<span class="badge bg-warning text-dark ms-2" title="Recepción con discrepancia"><i class="bi bi-exclamation-triangle"></i> Faltantes</span>`;
+                } else if (mov.concepto && mov.concepto.toLowerCase().includes("ajuste")) {
+                     rowStyle = "background-color: #f8d7da; border-left: 4px solid #dc3545;"; // Rojo de ajuste
+                     iconoDiscrepancia = `<span class="badge bg-danger ms-2"><i class="bi bi-tools"></i> Ajuste</span>`;
+                }
+
+                // Generar los textos de ingreso/egreso con sus colores
+                const colorTextoIngreso = ingreso > 0 ? 'green' : 'inherit';
+                const colorTextoEgreso = egreso > 0 ? 'red' : 'inherit';
                 const ingresoStr = ingreso > 0 ? `+${ingreso.toLocaleString('en-US')} ${unidad}` : '-';
                 const egresoStr = egreso > 0 ? `-${egreso.toLocaleString('en-US')} ${unidad}` : '-';
+                
+                // Formatear quién autorizó (si existe el campo 'usuario' o viene en el concepto)
+                let responsableStr = mov.usuario ? `<br><small class="text-muted"><i class="bi bi-person"></i> ${mov.usuario}</small>` : '';
 
                 htmlFilas += `
-                    <tr style="background-color: ${colorFondo};">
-                        <td style="padding: 8px;">${new Date(mov.fecha_registro).toLocaleString()}</td>
-                        <td>${mov.concepto}</td>
+                    <tr style="${rowStyle}">
+                        <td style="padding: 8px;">${new Date(mov.fecha_registro).toLocaleString()}${responsableStr}</td>
+                        <td>${conceptoDisplay} ${iconoDiscrepancia}</td>
                         <td>${mov.numero_lote || '-'}</td>
-                        <td>${mov.tipo_movimiento}</td>
+                        <td><span class="badge bg-secondary">${mov.tipo_movimiento}</span></td>
                         <td>$${mov.costo_unitario.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                        <td style="color: ${colorTexto}; font-weight: bold;">${ingresoStr}</td>
-                        <td style="color: ${colorTexto}; font-weight: bold;">${egresoStr}</td>
+                        <td style="color: ${colorTextoIngreso}; font-weight: bold;">${ingresoStr}</td>
+                        <td style="color: ${colorTextoEgreso}; font-weight: bold;">${egresoStr}</td>
                         <td style="font-weight: bold;">${saldoActual.toLocaleString('en-US')} ${unidad}</td> 
                         <td style="font-weight: bold; color: #0056b3;">$${(saldoActual * mov.costo_unitario).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                     </tr>
@@ -286,7 +297,6 @@ document.getElementById('btn-consultar-kardex').addEventListener('click', async 
         console.error("Error:", error);
         tbody.innerHTML = '<tr><td colspan="9" style="color: red; text-align: center;">Ocurrió un error al cargar el Kardex.</td></tr>';
     } finally {
-        // Restauramos con el texto capturado al inicio
         btnConsultar.disabled = false;
         btnConsultar.innerHTML = textoOriginalBtn;
     }
@@ -309,7 +319,6 @@ document.getElementById('btn-descargar-kardex').addEventListener('click', async 
     const inputInicio = document.getElementById('fecha-inicio').value;
     const inputFin = document.getElementById('fecha-fin').value;
     
-    // Validación de fechas para la exportación
     if (inputInicio && inputFin) {
         if (inputInicio > inputFin) {
             alert("Error: La Fecha de Inicio no puede ser posterior a la Fecha Fin.");
@@ -357,10 +366,9 @@ document.getElementById('btn-descargar-kardex').addEventListener('click', async 
 });
 
 // ==========================================
-// UX DEL MODAL: Autocompletado y Cálculos (CORREGIDO)
+// UX DEL MODAL: Autocompletado y Cálculos 
 // ==========================================
 document.addEventListener('DOMContentLoaded', () => {
-    // 1. Lógica del Modal (Copiar SKU y Almacén)
     const modalIngresoEl = document.getElementById('modalNuevoIngreso');
     if (modalIngresoEl) {
         modalIngresoEl.addEventListener('show.bs.modal', () => {
@@ -395,7 +403,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // 2. Lógica de la Calculadora de Totales
     const cantInput = document.getElementById('ingreso-cantidad');
     const costoInput = document.getElementById('ingreso-costo');
     const totalDisp = document.getElementById('ingreso-total-calculado');
@@ -479,7 +486,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const modalEgresoEl = document.getElementById('modalEgreso');
     
     if (modalEgresoEl) {
-        // Autocompletar datos al abrir el modal
         modalEgresoEl.addEventListener('show.bs.modal', () => {
             const skuActual = document.getElementById('input-sku').value.trim();
             const almacenActual = document.getElementById('filtro_almacen').value.trim();
@@ -497,7 +503,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
-        // Limpiar el formulario al cerrar
         modalEgresoEl.addEventListener('hidden.bs.modal', () => {
             const form = document.getElementById('form-egreso');
             if (form) form.reset();
@@ -518,14 +523,12 @@ if (formEgreso) {
         btnProcesar.disabled = true;
         btnProcesar.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Procesando...';
 
-        // 1. Recolectar datos
         const sku = document.getElementById('egreso-sku').value;
         const almacen = document.getElementById('egreso-almacen').value;
         const flujoSeleccionado = document.getElementById('egreso-flujo').value;
         const cantidad = parseFloat(document.getElementById('egreso-cantidad').value);
         const concepto = document.getElementById('egreso-concepto').value;
 
-        // 2. Mapear el flujo elegido a un TipoMovimiento válido para el backend
         let tipoMovimiento = "OUT_SALE"; 
         if (flujoSeleccionado === "consumo_interno" || flujoSeleccionado === "baja_merma" || flujoSeleccionado === "control_calidad") {
             tipoMovimiento = "OUT_PROD"; 
@@ -558,11 +561,9 @@ if (formEgreso) {
             if (response.ok) {
                 alert(`✅ ${data.mensaje}\nLotes afectados en cascada: ${data.lotes_afectados}`);
                 
-                // Ocultar modal usando Bootstrap nativo
                 const modalInstance = bootstrap.Modal.getInstance(document.getElementById('modalEgreso'));
                 modalInstance.hide();
                 
-                // Hacer clic virtual en el botón de consultar para recargar la tabla
                 document.getElementById('btn-consultar-kardex').click();
             } else {
                 alert(`❌ Error: ${data.detail || 'No se pudo procesar la salida'}`);
@@ -571,7 +572,6 @@ if (formEgreso) {
             console.error("Error en la petición:", error);
             alert("Ocurrió un error de conexión con el servidor.");
         } finally {
-            // Restaurar el botón a su estado original
             btnProcesar.disabled = false;
             btnProcesar.innerHTML = '<i class="bi bi-check2-circle"></i> Procesar Salida';
         }

@@ -3,48 +3,99 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>InvNext - Sistema de Gestión</title>
+    <title>InvNext - ERP Central</title>
     <!-- Bootstrap 5 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <!-- Bootstrap Icons (Necesario para el ícono de Salir) -->
+    <!-- Bootstrap Icons -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <style>
+        /* Ajustes menores para la barra de navegación */
+        .navbar-brand { font-weight: 700; letter-spacing: 0.5px; }
+        .dropdown-menu { border: none; box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15); border-radius: 8px; }
+        .dropdown-item { padding: 10px 20px; font-size: 0.95rem; }
+        .dropdown-item:hover { background-color: #f8f9fa; color: #0d6efd; font-weight: 500; }
+        .dropdown-item i { margin-right: 8px; color: #6c757d; }
+        .nav-link { font-weight: 500; font-size: 0.95rem; }
+        /* Badge unificado */
+        .identity-badge { background: rgba(255, 255, 255, 0.1); border-radius: 6px; padding: 6px 12px; }
+    </style>
 </head>
 <body class="bg-light">
 
-    <!-- BARRA DE NAVEGACIÓN SUPERIOR (Solo visible si mostrar_menu es True) -->
+    <!-- BARRA DE NAVEGACIÓN SUPERIOR (Visible globalmente) -->
     {% if mostrar_menu %}
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
-        <div class="container-fluid">
-            <a class="navbar-brand" href="/vistas/kardex">InvNext</a>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark sticky-top shadow-sm">
+        <div class="container-fluid px-4">
+            <a class="navbar-brand text-primary fs-4" href="/vistas/dashboard">
+                <i class="bi bi-box-fill text-white me-2"></i>Inv<span class="text-white">Next</span>
+            </a>
+            
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
             </button>
+            
             <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav me-auto">
-                    <!-- Tus enlaces originales -->
-                    <li class="nav-item"><a class="nav-link" href="/vistas/dashboard">Dashboard</a></li>
-                    <li class="nav-item"><a class="nav-link" href="/vistas/articulos">Catálogo</a></li>
-                    <li class="nav-item"><a class="nav-link" href="/vistas/kardex">Kardex</a></li>
+                <ul class="navbar-nav me-auto ms-3 gap-2">
                     
-                    <!-- Tus nuevos módulos de inventario -->
-                    <li class="nav-item"><a class="nav-link text-warning" href="/vistas/recepcion-oc">Recepción OC</a></li>
-                    <li class="nav-item"><a class="nav-link text-warning" href="/vistas/ajuste-fisico">Conteo Físico</a></li>
-                    
-                    <!-- Más enlaces originales -->
-                    <li class="nav-item"><a class="nav-link" href="/vistas/alertas">Alertas</a></li>
-                    <li class="nav-item"><a class="nav-link" href="/vistas/vencimientos">Vencimientos</a></li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/vistas/dashboard"><i class="bi bi-speedometer2 me-1"></i>Dashboard</a>
+                    </li>
 
-                    <!-- Enlace directo a Traspasos -->
-                    <li class="nav-item"><a class="nav-link text-info" href="/vistas/traspasos">Traspasos</a></li>
+                    <!-- Módulo: Ventas -->
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+                            <i class="bi bi-cart3 me-1"></i>Ventas
+                        </a>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="/vistas/pos"><i class="bi bi-pc-display-horizontal"></i> Punto de Venta (POS)</a></li>
+                        </ul>
+                    </li>
+
+                    <!-- Módulo: Inventario -->
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+                            <i class="bi bi-boxes me-1"></i>Inventario
+                        </a>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="/vistas/articulos"><i class="bi bi-journal-text"></i> Catálogo de Artículos</a></li>
+                            <li><a class="dropdown-item" href="/vistas/kardex"><i class="bi bi-clipboard2-data"></i> Movimientos (Kardex)</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="/vistas/ajuste-fisico"><i class="bi bi-upc-scan"></i> Conteo Físico / Ajustes</a></li>
+                        </ul>
+                    </li>
+
+                    <!-- Módulo: Logística -->
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+                            <i class="bi bi-truck me-1"></i>Logística
+                        </a>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="/vistas/traspasos"><i class="bi bi-box-arrow-right"></i> Traspasos a Sucursales</a></li>
+                            <li id="menu-recepcion-oc"><a class="dropdown-item text-danger" href="/vistas/recepcion-oc"><i class="bi bi-box-arrow-in-down"></i> Recepción de Compras (OC)</a></li>
+                        </ul>
+                    </li>
+
+                    <!-- Módulo: Alertas y Reportes -->
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+                            <i class="bi bi-bell me-1"></i>Alertas
+                        </a>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="/vistas/alertas"><i class="bi bi-exclamation-triangle text-warning"></i> Alertas de Stock</a></li>
+                            <li><a class="dropdown-item" href="/vistas/vencimientos"><i class="bi bi-calendar-x text-danger"></i> Control de Vencimientos</a></li>
+                        </ul>
+                    </li>
                 </ul>
+
+                <!-- Bloque de Identidad Unificado -->
                 <div class="d-flex align-items-center">
-                    <!-- Insignia del Usuario -->
-                    <div id="user-info-badge" class="text-end me-3" style="display: none !important;">
-                        <span class="d-block fw-bold text-light" id="layout-username" style="font-size: 0.9rem;"></span>
+                    <div id="user-info-badge" class="identity-badge text-end me-3 text-white" style="display: none !important; line-height: 1.2;">
+                        <span class="d-block fw-bold" id="layout-username" style="font-size: 0.95rem;"></span>
                         <span class="badge bg-primary" id="layout-almacen"></span>
+                        <span class="badge bg-secondary ms-1" id="layout-caja" style="display: none;"></span>
                     </div>
                     
-                    <button class="btn btn-outline-danger btn-sm" onclick="cerrarSesion()">
+                    <button class="btn btn-outline-danger btn-sm border-0 fw-bold" onclick="cerrarSesion()">
                         <i class="bi bi-box-arrow-right"></i> Salir
                     </button>
                 </div>
@@ -54,8 +105,7 @@
     {% endif %}
 
     <!-- CONTENEDOR PRINCIPAL -->
-    <div class="container">
-        <!-- Aquí Jinja2 inyectará el contenido de login, kardex, etc. -->
+    <div class="container-fluid px-lg-5 pb-5">
         {% block contenido %}
         {% endblock %}
     </div>
@@ -63,40 +113,60 @@
     <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     
-    <!-- Tu script global para manejar auth.js -->
+    <!-- RECUPERAMOS TU SCRIPT GLOBAL DE AUTENTICACIÓN -->
     <script src="/static/js/auth.js"></script>
     
-    <!-- Script unificado para la barra de navegación -->
+    <!-- Script unificado de Identidad y Permisos -->
     <script>
         async function cargarIdentidadGlobal() {
             const token = localStorage.getItem("erp_token");
-            if (!token) return;
+            if (!token) {
+                // Si la vista requiere menú y no hay token, lo mandamos al login
+                if (document.querySelector('.navbar')) {
+                    window.location.href = "/vistas/login";
+                }
+                return;
+            }
 
             try {
-                const res = await fetch('/me', { 
-                    headers: { 'Authorization': `Bearer ${token}` } 
-                });
+                // Extracción rápida del token JWT
+                const payloadBase64 = token.split('.')[1];
+                const decodedPayload = JSON.parse(atob(payloadBase64));
+                const rolUsuario = decodedPayload.rol || 'OPERADOR';
+
+                // Consulta a la BD para obtener el perfil completo (Sucursal y Caja)
+                const res = await fetch('/me', { headers: { 'Authorization': `Bearer ${token}` } });
                 
                 if (res.ok) {
                     const perfil = await res.json();
                     
                     const nombreUsuario = perfil.username ? perfil.username.toUpperCase() : 'USUARIO';
-                    const nombreAlmacen = perfil.almacen_id || perfil.codigo_almacen || 'ADMIN';
+                    const nombreAlmacen = perfil.almacen_id || perfil.codigo_almacen || 'GLOBAL';
+                    const nombreCaja = perfil.caja_id || null;
                     
-                    const spanUsuario = document.getElementById('layout-username');
-                    const spanAlmacen = document.getElementById('layout-almacen');
-                    const badgeInfo = document.getElementById('user-info-badge');
+                    // Inyectar datos en la barra
+                    document.getElementById('layout-username').textContent = nombreUsuario;
+                    document.getElementById('layout-almacen').textContent = nombreAlmacen;
+                    
+                    if (nombreCaja) {
+                        const badgeCaja = document.getElementById('layout-caja');
+                        badgeCaja.textContent = nombreCaja;
+                        badgeCaja.style.display = 'inline-block';
+                    }
 
-                    if (spanUsuario) spanUsuario.textContent = nombreUsuario;
-                    if (spanAlmacen) spanAlmacen.textContent = nombreAlmacen;
-                    if (badgeInfo) badgeInfo.style.setProperty('display', 'block', 'important');
+                    document.getElementById('user-info-badge').style.setProperty('display', 'block', 'important');
                     
+                    // ==========================================
+                    // RBAC: CONTROL VISUAL DE ACCESOS POR ROL
+                    // ==========================================
+                    if (rolUsuario !== 'ADMIN') {
+                        // Ocultamos módulos sensibles a cajeros/operadores
+                        const menuRecepOC = document.getElementById('menu-recepcion-oc');
+                        if (menuRecepOC) menuRecepOC.style.display = 'none';
+                    }
+
                 } else if (res.status === 401) {
-                    // Solo cerramos sesión si el token es rechazado (401 No Autorizado)
                     cerrarSesion();
-                } else {
-                    // Registramos otros errores (ej. 500) en consola sin expulsar al usuario
-                    console.error("Error del servidor al cargar perfil:", await res.text());
                 }
             } catch (error) {
                 console.error("Error al cargar la identidad:", error);
@@ -111,7 +181,7 @@
         document.addEventListener('DOMContentLoaded', cargarIdentidadGlobal);
     </script>
 
-    <!-- Bloque para scripts específicos de cada pantalla -->
+    <!-- Scripts específicos de la vista -->
     {% block scripts %}
     {% endblock %}
 </body>

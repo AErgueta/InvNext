@@ -1,4 +1,4 @@
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     // Verificar autenticación
     const token = localStorage.getItem('erp_token');
     if (!token) {
@@ -6,6 +6,33 @@ document.addEventListener('DOMContentLoaded', () => {
         window.location.href = '/vistas/login';
         return;
     }
+
+    // ==========================================
+    // BARRERA DE SEGURIDAD RBAC (FRONTEND)
+    // ==========================================
+    try {
+        const resPerfil = await fetch('/me', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (resPerfil.ok) {
+            const perfil = await resPerfil.json();
+            // Si el rol NO es ADMIN, lo pateamos al dashboard
+            if (perfil.rol !== 'ADMIN') {
+                alert("Acceso Denegado: No tienes permisos de administrador para realizar ajustes de inventario.");
+                window.location.href = '/vistas/dashboard';
+                return; // Detenemos la ejecución
+            }
+        } else {
+             window.location.href = '/vistas/login';
+             return;
+        }
+    } catch (error) {
+        console.error("Error validando permisos:", error);
+        window.location.href = '/vistas/dashboard';
+        return;
+    }
+    // ==========================================
 
     const formAjuste = document.getElementById('form-ajuste-fisico');
     const btnProcesar = document.getElementById('btn-procesar-ajuste');

@@ -11,6 +11,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     const modalEditar = new bootstrap.Modal(document.getElementById('modalEditar'));
     const modalCrear = new bootstrap.Modal(document.getElementById('modalCrear'));
+    const inputBuscador = document.getElementById('buscador-tabla');
+
+    // Utilidad para moneda
+    const formatearMoneda = (valor) => {
+        return new Intl.NumberFormat('es-BO', { 
+            minimumFractionDigits: 2, 
+            maximumFractionDigits: 2 
+        }).format(valor);
+    };
 
     async function cargarCatalogo() {
         try {
@@ -23,7 +32,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
 
             if (respuesta.status === 401) {
-                cerrarSesion();
+                // cerrarSesion() debería estar definido en main.hbs
+                localStorage.removeItem("erp_token");
+                window.location.href = "/vistas/login";
                 return;
             }
             
@@ -37,70 +48,85 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    function dibujarTabla(articulos) {
+    function dibujarTabla(articulosParaMostrar) {
         const tbody = document.getElementById('tabla-articulos');
         tbody.innerHTML = '';
+        
+        document.getElementById('total-articulos').textContent = articulosParaMostrar.length;
 
-        if (articulos.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">Tu catálogo está vacío.</td></tr>';
+        if (articulosParaMostrar.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">No se encontraron artículos.</td></tr>';
             return;
         }
 
-        articulos.forEach(art => {
+        articulosParaMostrar.forEach(art => {
             const tr = document.createElement('tr');
             
-            // Si está inactivo, le bajamos la opacidad visualmente
             if (art.activo === false) {
                 tr.classList.add('table-secondary', 'text-muted');
             }
 
             const badgeLotes = art.controla_lotes 
-                ? '<span class="badge bg-warning text-dark"><i class="bi bi-check2-circle"></i> Sí (FEFO)</span>' 
-                : '<span class="badge bg-secondary">No</span>';
+                ? '<span class="badge bg-warning text-dark"><i class="bi bi-layers-fill"></i> Sí</span>' 
+                : '<span class="badge bg-light text-secondary border">No</span>';
 
-            const precioStr = art.precio_venta != null ? parseFloat(art.precio_venta).toFixed(2) : '0.00';
+            const precioStr = art.precio_venta != null ? formatearMoneda(art.precio_venta) : '0.00';
 
-            // Definimos el botón según el estado actual
             const esActivo = art.activo !== false;
             const btnEstadoClass = esActivo ? 'btn-outline-danger' : 'btn-outline-success';
-            const btnEstadoIcon = esActivo ? 'bi-trash3' : 'bi-check-circle';
-            const btnEstadoTitle = esActivo ? 'Desactivar' : 'Activar';
+            const btnEstadoIcon = esActivo ? 'bi-archive' : 'bi-arrow-counterclockwise';
+            const btnEstadoTitle = esActivo ? 'Archivar' : 'Restaurar';
 
             tr.innerHTML = `
-                <td>
-                    <strong>${art.sku}</strong>
-                    ${!esActivo ? '<span class="badge bg-danger ms-2">Inactivo</span>' : ''}
+                <td class="fw-bold align-middle">
+                    ${art.sku}
+                    ${!esActivo ? '<br><span class="badge bg-danger mt-1">Inactivo</span>' : ''}
                 </td>
-                <td>${art.nombre || 'Sin nombre'}</td>
-                <td class="text-end">$ ${precioStr}</td>
-                <td>${badgeLotes}</td>
-                <td class="text-end">
+                <td class="align-middle">
+                    ${art.nombre || 'Sin nombre'}
+                    ${art.codigo_barras ? `<br><small class="text-muted"><i class="bi bi-upc"></i> ${art.codigo_barras}</small>` : ''}
+                </td>
+                <td class="text-end fw-bold text-success align-middle">$ ${precioStr}</td>
+                <td class="text-center align-middle">${badgeLotes}</td>
+                <td class="text-end align-middle">
                     <button class="btn btn-sm btn-outline-primary btn-editar me-1" data-sku="${art.sku}" title="Editar">
-                        <i class="bi bi-pencil-square"></i> Editar
+                        <i class="bi bi-pencil-square"></i>
                     </button>
                     <button class="btn btn-sm ${btnEstadoClass} btn-estado" data-sku="${art.sku}" title="${btnEstadoTitle}">
-                        <i class="bi ${btnEstadoIcon}"></i> ${btnEstadoTitle}
+                        <i class="bi ${btnEstadoIcon}"></i>
                     </button>
                 </td>
             `;
             tbody.appendChild(tr);
         });
 
-        // Eventos para Editar
+        // Re-asignar eventos
         document.querySelectorAll('.btn-editar').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 abrirModalEdicion(e.currentTarget.getAttribute('data-sku'));
             });
         });
 
-        // Eventos para Activar/Desactivar
         document.querySelectorAll('.btn-estado').forEach(btn => {
             btn.addEventListener('click', async (e) => {
                 const sku = e.currentTarget.getAttribute('data-sku');
-                await cambiarEstadoArticulo(sku);
+                if(confirm(`¿Estás seguro de cambiar el estado del artículo ${sku}?`)) {
+                    await cambiarEstadoArticulo(sku);
+                }
             });
         });
     }
+
+    // --- BUSCADOR EN TIEMPO REAL ---
+    inputBuscador.addEventListener('input', (e) => {
+        const query = e.target.value.toLowerCase().trim();
+        const filtrados = listaArticulos.filter(art => 
+            (art.sku && art.sku.toLowerCase().includes(query)) ||
+            (art.nombre && art.nombre.toLowerCase().includes(query)) ||
+            (art.codigo_barras && art.codigo_barras.toLowerCase().includes(query))
+        );
+        dibujarTabla(filtrados);
+    });
 
     async function cambiarEstadoArticulo(sku) {
         try {
@@ -118,7 +144,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                 return;
             }
 
-            cargarCatalogo(); // Refrescamos la tabla para ver el cambio de inmediato
+            // Mantenemos el filtro activo después de recargar
+            await cargarCatalogo(); 
+            inputBuscador.dispatchEvent(new Event('input'));
+
         } catch (error) {
             console.error("Error de red:", error);
             alert("Error de conexión al intentar cambiar el estado.");
@@ -144,6 +173,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         const nuevoPrecio = parseFloat(document.getElementById('edit-precio').value);
         const nuevoBarras = document.getElementById('edit-barras').value.trim();
 
+        const btnGuardar = document.getElementById('btn-guardar-cambios');
+        btnGuardar.disabled = true;
+        btnGuardar.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Guardando...';
+
         try {
             const respuesta = await fetch(`/articulos/${sku}`, {
                 method: 'PATCH',
@@ -165,35 +198,47 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
 
             modalEditar.hide();
-            cargarCatalogo();
+            await cargarCatalogo();
+            inputBuscador.dispatchEvent(new Event('input')); // Mantiene el filtro de búsqueda
         } catch (error) {
             console.error("Error de red:", error);
             alert("No se pudo conectar con el servidor.");
+        } finally {
+            btnGuardar.disabled = false;
+            btnGuardar.innerHTML = '<i class="bi bi-floppy"></i> Guardar Cambios';
         }
     });
 
     // Ordenamientos
     document.getElementById('th-sku').addEventListener('click', () => {
-        listaArticulos.sort((a, b) => (a.sku || "").localeCompare(b.sku || ""));
+        listaArticulos.sort((a, b) => {
+            const res = (a.sku || "").localeCompare(b.sku || "");
+            return ordenAscendenteSKU ? res : -res;
+        });
         ordenAscendenteSKU = !ordenAscendenteSKU;
-        dibujarTabla(listaArticulos);
+        inputBuscador.dispatchEvent(new Event('input')); // Aplicar el orden pero mantener el filtro
     });
 
     document.getElementById('th-nombre').addEventListener('click', () => {
-        listaArticulos.sort((a, b) => (a.nombre || "").localeCompare(b.nombre || ""));
+        listaArticulos.sort((a, b) => {
+            const res = (a.nombre || "").localeCompare(b.nombre || "");
+            return ordenAscendenteNombre ? res : -res;
+        });
         ordenAscendenteNombre = !ordenAscendenteNombre;
-        dibujarTabla(listaArticulos);
+        inputBuscador.dispatchEvent(new Event('input')); 
     });
 
     // Abrir el modal de creación y limpiar campos
     document.getElementById('btn-nuevo-articulo').addEventListener('click', () => {
         document.getElementById('form-crear-articulo').reset();
         modalCrear.show();
+        // Foco automático en el SKU al abrir el modal
+        setTimeout(() => document.getElementById('crear-sku').focus(), 500);
     });
 
     // Guardar el nuevo artículo
     document.getElementById('btn-guardar-nuevo').addEventListener('click', async () => {
-        const sku = document.getElementById('crear-sku').value.trim();
+        const sku = document.getElementById('crear-sku').value.trim().toUpperCase(); // Forzar mayúsculas
         const nombre = document.getElementById('crear-nombre').value.trim();
         const barras = document.getElementById('crear-barras').value.trim();
         const precio = parseFloat(document.getElementById('crear-precio').value);
@@ -202,9 +247,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // Validación básica
         if (!sku || !nombre || isNaN(precio) || !flujoSeguimiento) {
-            alert("Por favor, completa todos los campos obligatorios.");
+            alert("Por favor, completa todos los campos obligatorios (*).");
             return;
         }
+
+        const btnGuardarNuevo = document.getElementById('btn-guardar-nuevo');
+        btnGuardarNuevo.disabled = true;
+        btnGuardarNuevo.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Guardando...';
 
         const nuevoArticulo = {
             sku: sku,
@@ -229,17 +278,24 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             if (!respuesta.ok) {
                 const err = await respuesta.json();
-                alert(`Error al crear: ${err.detail || 'Verifica los datos'}`);
+                alert(`Error al crear: ${err.detail || 'Verifica los datos. El SKU podría ya existir.'}`);
                 return;
             }
 
             modalCrear.hide();
-            cargarCatalogo(); // Refresca la tabla automáticamente
+            await cargarCatalogo(); 
+            // Limpiar el buscador para ver el nuevo registro
+            inputBuscador.value = '';
+            inputBuscador.dispatchEvent(new Event('input'));
         } catch (error) {
             console.error("Error de red:", error);
             alert("No se pudo conectar con el servidor.");
+        } finally {
+            btnGuardarNuevo.disabled = false;
+            btnGuardarNuevo.innerHTML = '<i class="bi bi-floppy"></i> Guardar Artículo';
         }
     });
 
+    // Iniciar carga
     cargarCatalogo();
 });

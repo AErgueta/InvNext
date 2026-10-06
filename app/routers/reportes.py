@@ -1,10 +1,14 @@
 from datetime import datetime, timedelta
 from typing import Optional
-from fastapi import APIRouter, status, Query
+from fastapi import APIRouter, status, Query, Depends
 from beanie.operators import In
 from app.models.movimiento import Movimiento, TipoMovimiento
 from app.models.articulo import Articulo
 from app.models.lote import Lote
+
+# --- NUEVAS IMPORTACIONES PARA REPORTES DE VENTAS ---
+from app.models.venta import Venta, EstadoVenta
+from app.routers.auth import obtener_usuario_admin
 
 router = APIRouter(
     prefix="/reportes",
@@ -90,7 +94,6 @@ async def calcular_reporte_utilidad():
 # ==========================================
 # NUEVOS ENDPOINTS: ALERTAS DE INVENTARIO
 # ==========================================
-
 
 @router.get("/lotes-por-vencer", status_code=status.HTTP_200_OK)
 async def reporte_lotes_por_vencer(dias_limite: int = Query(default=30, description="Días de anticipación para la alerta")):
@@ -235,3 +238,167 @@ async def obtener_resumen_dashboard():
         },
         "ultimos_movimientos": lista_movimientos
     }
+
+# ==========================================
+# ANEXO: NUEVOS REPORTES DE VENTAS CON RBAC
+# ==========================================
+
+@router.get("/ventas-generales", status_code=status.HTTP_200_OK)
+async def reporte_ventas_generales(
+    fecha_inicio: datetime = Query(..., description="Fecha de inicio (YYYY-MM-DDTHH:MM:SS)"),
+    fecha_fin: datetime = Query(..., description="Fecha fin (YYYY-MM-DDTHH:MM:SS)"),
+    admin = Depends(obtener_usuario_admin)
+):
+    """
+    Calcula el total de ingresos y la cantidad de tickets emitidos en un rango de fechas.
+    Ignora las ventas canceladas.
+    """
+    pipeline = [
+        {
+            "$match": {
+                "fecha_registro": {"$gte": fecha_inicio, "$lte": fecha_fin},
+                "estado": {"$ne": EstadoVenta.CANCELADA.value}
+            }
+        },
+        {
+            "$group": {
+                "_id": None,
+                "total_ingresos": {"$sum": "$total_venta"},
+                "total_costos": {"$sum": "$subtotal_venta"},
+                "descuentos_otorgados": {"$sum": "$descuento_global"},
+                "cantidad_ventas": {"$sum": 1}
+            }
+        },
+        {
+            "$project": {
+                "_id": 0,
+                "total_ingresos": 1,
+                "descuentos_otorgados": 1,
+                "cantidad_ventas": 1
+            }
+        }
+    ]
+    
+    # Usamos get_pymongo_collection() y evitamos await en .aggregate()
+    coleccion = Venta.get_pymongo_collection()
+    cursor = coleccion.aggregate(pipeline)
+    resultados = await cursor.to_list(length=None)
+    
+    if not resultados:
+        return {"total_ingresos": 0.0, "descuentos_otorgados": 0.0, "cantidad_ventas": 0}
+        
+    return resultados[0]
+
+
+@router.get("/ventas-por-articulo", status_code=status.HTTP_200_OK)
+async def reporte_ventas_por_articulo(
+    fecha_inicio: datetime = Query(..., description="Fecha de inicio"),
+    fecha_fin: datetime = Query(..., description="Fecha fin"),
+    limite: int = Query(10, description="Cantidad de productos a mostrar (Top N)"),
+    admin = Depends(obtener_usuario_admin)
+):
+    """
+    Desglosa el array de artículos y suma cantidades y dinero generado por SKU.
+    """
+    pipeline = [
+        {
+            "$match": {
+                "fecha_registro": {"$gte": fecha_inicio, "$lte": fecha_fin},
+                "estado": {"$ne": EstadoVenta.CANCELADA.value}
+            }
+        },
+        { "$unwind": "$articulos" },
+        {
+            "$group": {
+                "_id": "$articulos.sku_articulo",
+                "nombre_articulo": {"$first": "$articulos.nombre_articulo"},
+                "cantidad_vendida": {"$sum": "$articulos.cantidad"},
+                "ingreso_generado": {"$sum": "$articulos.subtotal_linea"}
+            }
+        },
+        { "$sort": { "ingreso_generado": -1 } },
+        { "$limit": limite }
+    ]
+    
+    coleccion = Venta.get_pymongo_collection()
+    cursor = coleccion.aggregate(pipeline)
+    resultados = await cursor.to_list(length=None)
+    return resultados
+
+
+@router.get("/ventas-por-sucursal", status_code=status.HTTP_200_OK)
+async def reporte_ventas_por_sucursal(
+    fecha_inicio: datetime = Query(..., description="Fecha de inicio"),
+    fecha_fin: datetime = Query(..., description="Fecha fin"),
+    admin = Depends(obtener_usuario_admin)
+):
+    """
+    Compara los ingresos totales generados por cada sucursal.
+    """
+    pipeline = [
+        {
+            "$match": {
+                "fecha_registro": {"$gte": fecha_inicio, "$lte": fecha_fin},
+                "estado": {"$ne": EstadoVenta.CANCELADA.value}
+            }
+        },
+        {
+            "$group": {
+                "_id": "$sucursal_id",
+                "total_ingresos": {"$sum": "$total_venta"},
+                "cantidad_ventas": {"$sum": 1}
+            }
+        },
+        { "$sort": { "total_ingresos": -1 } }
+    ]
+    
+    coleccion = Venta.get_pymongo_collection()
+    cursor = coleccion.aggregate(pipeline)
+    resultados = await cursor.to_list(length=None)
+    return resultados
+
+
+@router.get("/ventas-por-caja", status_code=status.HTTP_200_OK)
+async def reporte_ventas_caja(
+    fecha_inicio: datetime = Query(..., description="Fecha de inicio"),
+    fecha_fin: datetime = Query(..., description="Fecha fin"),
+    sucursal_id: str = Query(None, description="Filtrar por una sucursal en específico"),
+    admin = Depends(obtener_usuario_admin)
+):
+    """
+    Muestra cuánto dinero ingresó por caja y por método de pago.
+    """
+    match_stage = {
+        "fecha_registro": {"$gte": fecha_inicio, "$lte": fecha_fin},
+        "estado": {"$ne": EstadoVenta.CANCELADA.value}
+    }
+    
+    if sucursal_id:
+        match_stage["sucursal_id"] = sucursal_id
+
+    pipeline = [
+        { "$match": match_stage },
+        {
+            "$group": {
+                "_id": {
+                    "caja_id": {"$ifNull": ["$caja_id", "CAJA-GENERAL"]},
+                    "metodo_pago": {"$ifNull": ["$metodo_pago", "EFECTIVO"]}
+                },
+                "total_recaudado": {"$sum": "$total_venta"}
+            }
+        },
+        {
+            "$project": {
+                "_id": 0,
+                "caja_id": "$_id.caja_id",
+                "metodo_pago": "$_id.metodo_pago",
+                "total_recaudado": 1
+            }
+        },
+        { "$sort": { "caja_id": 1, "total_recaudado": -1 } }
+    ]
+    
+    coleccion = Venta.get_pymongo_collection()
+    cursor = coleccion.aggregate(pipeline)
+    resultados = await cursor.to_list(length=None)
+    return resultados

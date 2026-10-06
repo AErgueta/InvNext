@@ -1,19 +1,41 @@
 {% extends "layouts/main.hbs" %}
 
 {% block contenido %}
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h2><i class="bi bi-box-seam"></i> Catálogo de Artículos</h2>
-    <button class="btn btn-primary fw-bold" id="btn-nuevo-articulo">
-        <i class="bi bi-plus-lg"></i> Nuevo Artículo
-    </button>
+<div class="row align-items-center mb-4">
+    <div class="col-md-6">
+        <h2 class="text-primary fw-bold mb-1"><i class="bi bi-box-seam"></i> Catálogo de Artículos</h2>
+        <p class="text-muted mb-0">Gestión de productos, precios y configuración de inventario.</p>
+    </div>
+    <div class="col-md-6 text-end">
+        <button class="btn btn-primary fw-bold shadow-sm" id="btn-nuevo-articulo">
+            <i class="bi bi-plus-lg"></i> Nuevo Artículo
+        </button>
+    </div>
+</div>
+
+<!-- Filtros y Buscador -->
+<div class="card shadow-sm border-0 mb-4">
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-4">
+                <div class="input-group">
+                    <span class="input-group-text bg-white"><i class="bi bi-search text-muted"></i></span>
+                    <input type="text" id="buscador-tabla" class="form-control border-start-0" placeholder="Buscar por SKU o Nombre...">
+                </div>
+            </div>
+            <div class="col-md-8 text-end">
+                <span class="text-muted small">Total de artículos: <strong id="total-articulos">0</strong></span>
+            </div>
+        </div>
+    </div>
 </div>
 
 <!-- Tabla Principal -->
 <div class="card shadow-sm border-0">
     <div class="card-body p-0">
-        <div class="table-responsive">
+        <div class="table-responsive" style="max-height: 600px; overflow-y: auto;">
             <table class="table table-hover align-middle mb-0">
-                <thead class="table-light">
+                <thead class="table-light sticky-top shadow-sm">
                     <tr>
                         <th style="cursor: pointer;" id="th-sku" title="Clic para ordenar">
                             SKU <i class="bi bi-arrow-down-up text-muted small"></i>
@@ -22,112 +44,132 @@
                             Nombre / Descripción <i class="bi bi-arrow-down-up text-muted small"></i>
                         </th>
                         <th class="text-end">Precio Venta</th>
-                        <th>Controla Lotes</th>
+                        <th class="text-center">Controla Lotes</th>
                         <th class="text-end">Acciones</th>
                     </tr>
                 </thead>
                 <tbody id="tabla-articulos">
-                    <tr><td colspan="5" class="text-center py-4 text-muted">Cargando catálogo...</td></tr>
+                    <tr><td colspan="5" class="text-center py-5 text-muted"><span class="spinner-border spinner-border-sm me-2"></span> Cargando catálogo...</td></tr>
                 </tbody>
             </table>
         </div>
     </div>
 </div>
-<!-- Modal de Edición de Artículo -->
+
+<!-- ========================================== -->
+<!-- MODAL: EDICIÓN DE ARTÍCULO                 -->
+<!-- ========================================== -->
 <div class="modal fade" id="modalEditar" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg">
             <div class="modal-header bg-light">
-                <h5 class="modal-title"><i class="bi bi-pencil-square"></i> Editar Artículo</h5>
+                <h5 class="modal-title fw-bold text-primary"><i class="bi bi-pencil-square"></i> Editar Artículo</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <div class="modal-body">
+            <div class="modal-body p-4">
                 <form id="form-editar-articulo">
                     <input type="hidden" id="edit-sku-original">
                     
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">SKU</label>
-                        <input type="text" class="form-control" id="edit-sku" disabled>
-                        <div class="form-text">El SKU no se puede modificar.</div>
+                    <div class="row mb-3">
+                        <div class="col-6">
+                            <label class="form-label fw-bold text-muted small mb-1">SKU (Fijo)</label>
+                            <input type="text" class="form-control bg-light fw-bold" id="edit-sku" disabled>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label fw-bold text-muted small mb-1">Código de Barras</label>
+                            <input type="text" class="form-control" id="edit-barras" placeholder="Ej: 777123456">
+                        </div>
                     </div>
 
                     <div class="mb-3">
-                        <label class="form-label fw-bold">Código de Barras</label>
-                        <input type="text" class="form-control" id="edit-barras" placeholder="Opcional">
+                        <label class="form-label fw-bold text-muted small mb-1">Nombre / Descripción</label>
+                        <input type="text" class="form-control form-control-lg" id="edit-nombre" required>
                     </div>
 
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">Nombre / Descripción</label>
-                        <input type="text" class="form-control" id="edit-nombre" required>
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">Precio de Venta ($)</label>
-                        <input type="number" step="0.01" class="form-control" id="edit-precio" required>
+                    <div class="mb-2">
+                        <label class="form-label fw-bold text-muted small mb-1">Precio de Venta (Bs.)</label>
+                        <div class="input-group">
+                            <span class="input-group-text bg-success text-white fw-bold">$</span>
+                            <input type="number" step="0.5" class="form-control form-control-lg text-end fw-bold text-success" id="edit-precio" required>
+                        </div>
                     </div>
                 </form>
             </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                <button type="button" class="btn btn-primary" id="btn-guardar-cambios">Guardar Cambios</button>
+            <div class="modal-footer bg-light">
+                <button type="button" class="btn btn-outline-secondary fw-bold" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary fw-bold px-4" id="btn-guardar-cambios">
+                    <i class="bi bi-floppy"></i> Guardar Cambios
+                </button>
             </div>
         </div>
     </div>
 </div>
-<!-- Modal de Creación de Artículo -->
+
+<!-- ========================================== -->
+<!-- MODAL: CREACIÓN DE ARTÍCULO                -->
+<!-- ========================================== -->
 <div class="modal fade" id="modalCrear" tabindex="-1">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg">
             <div class="modal-header bg-primary text-white">
-                <h5 class="modal-title"><i class="bi bi-plus-circle"></i> Nuevo Artículo</h5>
+                <h5 class="modal-title fw-bold"><i class="bi bi-plus-circle"></i> Crear Nuevo Artículo</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
-            <div class="modal-body">
+            <div class="modal-body p-4">
                 <form id="form-crear-articulo">
-                    <div class="row mb-3">
+                    
+                    <div class="row mb-4">
                         <div class="col-md-6">
                             <label class="form-label fw-bold">SKU <span class="text-danger">*</span></label>
-                            <input type="text" class="form-control" id="crear-sku" placeholder="Ej: PROD-001" required>
+                            <input type="text" class="form-control form-control-lg text-uppercase" id="crear-sku" placeholder="Ej: PROD-001" required>
+                            <small class="text-muted">Debe ser único y sin espacios.</small>
                         </div>
                         <div class="col-md-6">
                             <label class="form-label fw-bold">Código de Barras</label>
-                            <input type="text" class="form-control" id="crear-barras" placeholder="Opcional">
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="bi bi-upc-scan"></i></span>
+                                <input type="text" class="form-control form-control-lg" id="crear-barras" placeholder="Escanear...">
+                            </div>
                         </div>
                     </div>
                     
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">Nombre / Descripción <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control" id="crear-nombre" required>
+                    <div class="mb-4 border-bottom pb-4">
+                        <label class="form-label fw-bold">Nombre / Descripción Comercial <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control form-control-lg" id="crear-nombre" required placeholder="Ej: Plancha de Alucobol Plata 3mm">
                     </div>
 
                     <div class="row mb-3">
                         <div class="col-md-4">
-                            <label class="form-label fw-bold">Precio Venta ($) <span class="text-danger">*</span></label>
-                            <input type="number" step="0.01" min="0" class="form-control" id="crear-precio" value="0.00" required>
+                            <label class="form-label fw-bold text-success">Precio Venta (Bs.) <span class="text-danger">*</span></label>
+                            <div class="input-group">
+                                <span class="input-group-text bg-success text-white fw-bold">$</span>
+                                <input type="number" step="0.5" min="0" class="form-control text-end fw-bold" id="crear-precio" value="0.00" required>
+                            </div>
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label fw-bold">Controla Lotes</label>
-                            <select class="form-select" id="crear-lotes">
-                                <option value="true">Sí (Lógica FEFO)</option>
-                                <option value="false">No</option>
+                            <label class="form-label fw-bold">Controla Lotes (FEFO)</label>
+                            <select class="form-select border-warning" id="crear-lotes">
+                                <option value="true">Sí (Requiere Lote y Venc.)</option>
+                                <option value="false" selected>No (Estándar)</option>
                             </select>
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label fw-bold">Flujo de Seguimiento <span class="text-danger">*</span></label>
-                            <select class="form-select" id="crear-flujo" required>
+                            <label class="form-label fw-bold text-primary">Flujo de Seguimiento <span class="text-danger">*</span></label>
+                            <select class="form-select border-primary" id="crear-flujo" required>
                                 <option value="" disabled selected>-- Elegir ruta --</option>
-                                <option value="almacen_general">Almacén General</option>
+                                <option value="almacen_general">Almacén General (Venta Libre)</option>
                                 <option value="cadena_frio">Cadena de Frío</option>
                                 <option value="insumos_internos">Insumos Internos</option>
                             </select>
-                            <div class="form-text">Asignación manual obligatoria.</div>
                         </div>
                     </div>
                 </form>
             </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                <button type="button" class="btn btn-primary" id="btn-guardar-nuevo">Crear Artículo</button>
+            <div class="modal-footer bg-light">
+                <button type="button" class="btn btn-outline-secondary fw-bold" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary fw-bold px-4" id="btn-guardar-nuevo">
+                    <i class="bi bi-floppy"></i> Guardar Artículo
+                </button>
             </div>
         </div>
     </div>
