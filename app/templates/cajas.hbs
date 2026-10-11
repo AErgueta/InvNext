@@ -1,0 +1,88 @@
+{% extends "layouts/main.hbs" %}
+
+{% block contenido %}
+<div class="row align-items-center mb-4">
+    <div class="col-md-8">
+        <h2 class="text-primary fw-bold mb-1"><i class="bi bi-display"></i> Gestión de Cajas</h2>
+        <p class="text-muted mb-0">Administración de terminales de cobro por sucursal y almacén.</p>
+    </div>
+    <div class="col-md-4 text-end">
+        <button class="btn btn-primary fw-bold" onclick="abrirModalCrear()">
+            <i class="bi bi-plus-lg"></i> Nueva Caja
+        </button>
+    </div>
+</div>
+
+<div class="card shadow-sm border-0">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Código</th>
+                        <th>Nombre</th>
+                        <th>Sucursal</th>
+                        <th>Almacén</th>
+                        <th>Estado de Uso</th>
+                        <th>Estado Lógico</th>
+                        <th class="text-end">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody id="tabla-cajas">
+                    <tr><td colspan="7" class="text-center py-4">Cargando cajas...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Crear / Editar Caja -->
+<div class="modal fade" id="modalCaja" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title fw-bold" id="modalCajaTitulo">Nueva Caja</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="form-caja">
+                <div class="modal-body">
+                    <input type="hidden" id="caja-modo" value="crear">
+                    <input type="hidden" id="caja-codigo-original" value="">
+                    
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Código de Caja</label>
+                        <input type="text" class="form-control text-uppercase" id="caja-codigo" placeholder="Ej: CAJA-01-CENTRAL" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Nombre</label>
+                        <input type="text" class="form-control" id="caja-nombre" placeholder="Ej: Caja Mostrador 1" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Sucursal a la que pertenece</label>
+                        <select class="form-select" id="caja-sucursal" onchange="filtrarAlmacenesPorSucursal()" required>
+                            <option value="">Cargando sucursales...</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Almacén de Despacho (Inventario)</label>
+                        <select class="form-select" id="caja-almacen" required>
+                            <option value="">Seleccione primero una sucursal...</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer bg-light">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary fw-bold" id="btn-guardar-caja">Guardar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/cajas.js"></script>
+{% endblock %}

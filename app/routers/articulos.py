@@ -9,7 +9,7 @@ from app.models.movimiento import Movimiento
 from app.models.lote import Lote
 from app.models.almacen import Almacen 
 from app.routers.auth import obtener_usuario_actual
-from app.models.usuario import RolUsuario
+from app.models.usuario import RolUsuario, Usuario
 
 # Creamos el enrutador con un prefijo para que todas las rutas empiecen con /articulos
 router = APIRouter(
@@ -297,7 +297,7 @@ async def buscar_por_codigo_barras(codigo: str):
 async def buscar_articulo_dinamico(q: str, almacen_id: Optional[str] = None):
     """
     Busca artículos para el Punto de Venta y Autocompletado del Kardex.
-    Filtra dinámicamente el stock si se provee el almacen_id.
+    Filtra dinámicamente el stock si se provee el almacen_id, usando la Fuente de la Verdad.
     """
     query = {
         "$or": [
@@ -309,22 +309,30 @@ async def buscar_articulo_dinamico(q: str, almacen_id: Optional[str] = None):
     
     resultados = await Articulo.find(query).limit(10).to_list()
 
-    # Si el frontend envía el almacén desde donde están buscando,
-    # calculamos exactamente cuánto stock físico hay en esa sucursal
     if almacen_id:
         resultados_procesados = []
         for art in resultados:
             art_dict = art.model_dump()
+            stock_en_este_almacen = 0.0
             
-            # Sumamos las existencias específicas de ese almacén
-            stock_en_este_almacen = 0
-            if getattr(art, "stock_por_almacen", None):
-                for stock_alm in art.stock_por_almacen:
-                    if stock_alm.codigo_almacen == almacen_id:
-                        stock_en_este_almacen = stock_alm.cantidad
-                        break
+            # --- LÓGICA DE FUENTE DE VERDAD ---
+            if getattr(art, "controla_lotes", False):
+                lotes_articulo = await Lote.find(Lote.sku_articulo == art.sku).to_list()
+                for lote in lotes_articulo:
+                    for stock_alm in lote.stock_por_almacen:
+                        codigo_actual = stock_alm.get("codigo_almacen") if isinstance(stock_alm, dict) else getattr(stock_alm, "codigo_almacen", "")
+                        if codigo_actual and codigo_actual.strip() == almacen_id.strip():
+                            cant = stock_alm.get("cantidad") if isinstance(stock_alm, dict) else getattr(stock_alm, "cantidad", 0.0)
+                            stock_en_este_almacen += float(cant)
+            else:
+                if getattr(art, "stock_por_almacen", None):
+                    for stock_alm in art.stock_por_almacen:
+                        codigo_actual = stock_alm.get("codigo_almacen") if isinstance(stock_alm, dict) else getattr(stock_alm, "codigo_almacen", "")
+                        if codigo_actual and codigo_actual.strip() == almacen_id.strip():
+                            cant = stock_alm.get("cantidad") if isinstance(stock_alm, dict) else getattr(stock_alm, "cantidad", 0.0)
+                            stock_en_este_almacen = float(cant)
+                            break
             
-            # Inyectamos el valor calculado para que el frontend lo lea
             art_dict["stock_en_almacen"] = stock_en_este_almacen
             resultados_procesados.append(art_dict)
             
@@ -361,3 +369,57 @@ async def cambiar_estado_articulo(
     
     await articulo.save()
     return articulo
+
+
+# ==========================================
+# ENDPOINT: REPORTE DE STOCK POR ALMACÉN (FUENTE DE VERDAD)
+# ==========================================
+@router.get("/reporte/stock/{codigo_almacen}", status_code=status.HTTP_200_OK)
+async def reporte_stock_almacen(
+    codigo_almacen: str, 
+    usuario_actual: Usuario = Depends(obtener_usuario_actual)
+):
+    """
+    Devuelve la lista ordenada de artículos. 
+    Para máxima precisión, extrae el stock directamente de los Lotes (Fuente de la Verdad).
+    """
+    articulos = await Articulo.find_all().sort(+Articulo.nombre).to_list()
+    
+    reporte = []
+    for art in articulos:
+        stock_alm_cantidad = 0.0
+        
+        # 1. FUENTE DE VERDAD PARA ARTÍCULOS CON LOTES
+        # Ignoramos el caché del artículo y sumamos directamente los lotes físicos reales
+        if getattr(art, "controla_lotes", False):
+            lotes_articulo = await Lote.find(Lote.sku_articulo == art.sku).to_list()
+            for lote in lotes_articulo:
+                for stock_alm in lote.stock_por_almacen:
+                    # Leemos de forma segura por si el ORM lo devuelve como diccionario o como objeto
+                    codigo_actual = stock_alm.get("codigo_almacen") if isinstance(stock_alm, dict) else getattr(stock_alm, "codigo_almacen", "")
+                    
+                    if codigo_actual and codigo_actual.strip() == codigo_almacen.strip():
+                        cant = stock_alm.get("cantidad") if isinstance(stock_alm, dict) else getattr(stock_alm, "cantidad", 0.0)
+                        stock_alm_cantidad += float(cant)
+                        
+        # 2. FUENTE DE VERDAD PARA ARTÍCULOS NORMALES (Sin lotes)
+        else:
+            if getattr(art, "stock_por_almacen", None):
+                for alm in art.stock_por_almacen:
+                    codigo_actual = alm.get("codigo_almacen") if isinstance(alm, dict) else getattr(alm, "codigo_almacen", "")
+                    if codigo_actual and codigo_actual.strip() == codigo_almacen.strip():
+                        stock_actual = alm.get("cantidad") if isinstance(alm, dict) else getattr(alm, "cantidad", 0.0)
+                        stock_alm_cantidad = float(stock_actual)
+                        break
+        
+        # 3. Armamos la estructura limpia para la tabla del frontend
+        reporte.append({
+            "sku": art.sku,
+            "nombre": art.nombre,
+            "categoria": getattr(art, "categoria", "General"),
+            "stock": stock_alm_cantidad,
+            "unidad_medida": getattr(art, "unidad_medida", "Unidades"),
+            "precio_venta": getattr(art, "precio_venta", 0.0)
+        })
+        
+    return reporte

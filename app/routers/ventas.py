@@ -14,6 +14,7 @@ from app.models.lote import Lote
 from app.models.articulo import Articulo
 from app.models.cuenta_corriente import CuentaCorriente, TipoTransaccionCxC
 from app.models.cliente import Cliente
+from app.models.caja import Caja  # <-- NUEVO: Importamos el modelo Caja
 
 router = APIRouter(
     prefix="/ventas",
@@ -26,16 +27,14 @@ router = APIRouter(
 class NuevaVentaRequest(BaseModel):
     cliente: str
     documento_cliente: Optional[str] = None
-    almacen_origen: str  
+    # almacen_origen: str  <-- ELIMINADO: El backend lo descubrirá solo
     flujo_trabajo_seleccionado: str 
     articulos: List[DetalleVenta]
     descuento_global: float = 0.0
     condicion_pago: CondicionPago = CondicionPago.CONTADO
-    # --- CAMPOS DE PAGO
     metodo_pago: str
     efectivo_recibido: float
     referencia_pago: str
-    # --- NUEVOS CAMPOS ---
     sucursal_id: str
     caja_id: str
 
@@ -58,15 +57,25 @@ async def registrar_venta(
     Recibe un carrito de compras, valida las matemáticas, genera el documento de Venta
     y dispara los movimientos de salida en estado PENDIENTE.
     """
+    # 0. NUEVO: VALIDACIÓN DE CAJA Y ALMACÉN
+    caja_origen = await Caja.find_one(Caja.codigo == request.caja_id, Caja.codigo_sucursal == request.sucursal_id)
+    if not caja_origen:
+        raise HTTPException(status_code=404, detail="La caja especificada no existe en esta sucursal.")
+    
+    if not caja_origen.codigo_almacen:
+        raise HTTPException(
+            status_code=400, 
+            detail="La caja actual no tiene un almacén de despacho configurado. Contacte a administración."
+        )
+        
+    almacen_despacho = caja_origen.codigo_almacen
+
     # ==========================================
     # ALTA RÁPIDA DE CLIENTE AUTOMÁTICA
     # ==========================================
     if request.documento_cliente and request.documento_cliente.strip().upper() != "S/N":
-        # Verificamos si ya existe el cliente por su documento/NIT
         cliente_existente = await Cliente.find_one(Cliente.documento_identidad == request.documento_cliente.strip().upper())
-        
         if not cliente_existente:
-            # Si no existe, lo creamos automáticamente al vuelo
             nuevo_cliente = Cliente(
                 nombre_razon_social=request.cliente.strip(),
                 documento_identidad=request.documento_cliente.strip().upper(),
@@ -95,18 +104,12 @@ async def registrar_venta(
         folio=folio_generado,
         cliente=request.cliente,
         documento_cliente=request.documento_cliente,
-        
-        # --- NUEVOS CAMPOS: MULTISUCURSAL ---
         sucursal_id=request.sucursal_id,
         caja_id=request.caja_id,
-        
         condicion_pago=request.condicion_pago,
-
-        # --- NUEVOS CAMPOS DE PAGO ---
         metodo_pago=request.metodo_pago,
         efectivo_recibido=request.efectivo_recibido,
         referencia_pago=request.referencia_pago,
-                  
         articulos=request.articulos,
         subtotal_venta=subtotal_calculado,
         descuento_global=request.descuento_global,
@@ -120,7 +123,7 @@ async def registrar_venta(
     for art in request.articulos:
         nuevo_movimiento = Movimiento(
             sku_articulo=art.sku_articulo,
-            codigo_almacen=request.almacen_origen,
+            codigo_almacen=almacen_despacho, # <-- NUEVO: Usa el almacén asignado a la caja
             numero_lote="LOTE-POR-ASIGNAR", 
             usuario=usuario_actual.username, 
             tipo_movimiento=TipoMovimiento.SALIDA_VENTA,
@@ -128,7 +131,7 @@ async def registrar_venta(
             costo_unitario=0.0,  
             concepto=f"Despacho por venta folio {folio_generado}",
             flujo_trabajo_seleccionado=request.flujo_trabajo_seleccionado,
-            estado="PENDIENTE" # Candado inicial asegurado
+            estado="PENDIENTE" 
         )
         movimientos_a_guardar.append(nuevo_movimiento)
         
@@ -141,7 +144,6 @@ async def registrar_venta(
         ids_movimientos.append(str(mov.id))
         
     if ids_movimientos:
-        #await nueva_venta.update({"$set": {"referencia_movimiento_id": ",".join(ids_movimientos)}})
         await nueva_venta.update({"$set": {"referencia_movimiento_id": ids_movimientos}})
         
     return {
@@ -151,7 +153,7 @@ async def registrar_venta(
         "condicion_pago": nueva_venta.condicion_pago,   
         "total_a_cobrar": total_calculado,
         "movimientos_generados": ids_movimientos
-    }    
+    } 
 
 # ==========================================
 # ENDPOINT 2: DESPACHAR MERCADERÍA (Logística Pura + Cargo CxC)

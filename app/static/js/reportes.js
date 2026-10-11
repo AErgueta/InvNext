@@ -31,11 +31,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // ==========================================
-    // INICIALIZACIÓN DE FECHAS
+    // INICIALIZACIÓN DE FECHAS Y VARIABLES
     // ==========================================
     const inputDesde = document.getElementById('fecha-desde');
     const inputHasta = document.getElementById('fecha-hasta');
     const btnConsultar = document.getElementById('btn-consultar');
+
+    // Variable global para almacenar los datos que se exportarán a CSV
+    let ultimosArticulosCargados = [];
 
     // Por defecto, seleccionar el mes actual
     const hoy = new Date();
@@ -62,7 +65,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const fechaFin = `${inputHasta.value}T23:59:59`;
 
         btnConsultar.disabled = true;
-        btnConsultar.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Cargando...';
+        btnConsultar.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
 
         try {
             // Ejecutamos las 4 llamadas en paralelo para máxima velocidad
@@ -93,7 +96,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             alert("No se pudieron cargar los reportes. Verifica tu conexión.");
         } finally {
             btnConsultar.disabled = false;
-            btnConsultar.innerHTML = '<i class="bi bi-search"></i> Consultar';
+            btnConsultar.innerHTML = '<i class="bi bi-search"></i>';
         }
     };
 
@@ -112,6 +115,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
 
     const renderizarArticulos = (articulos) => {
+        ultimosArticulosCargados = articulos || []; // Guardamos los datos para la exportación CSV
         const tbody = document.getElementById('tabla-articulos');
         tbody.innerHTML = '';
 
@@ -147,7 +151,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             lista.innerHTML += `
                 <li class="list-group-item d-flex justify-content-between align-items-center py-3">
                     <div>
-                        <span class="fw-bold d-block"><i class="bi bi-building"></i> ${suc._id}</span>
+                        <span class="fw-bold d-block"><i class="bi bi-building"></i> ${suc._id || 'GENERAL'}</span>
                         <small class="text-muted">${suc.cantidad_ventas} tickets emitidos</small>
                     </div>
                     <span class="badge bg-primary rounded-pill fs-6">${formatearMoneda(suc.total_ingresos)}</span>
@@ -182,6 +186,35 @@ document.addEventListener('DOMContentLoaded', async () => {
             `;
         });
     };
+
+    // ==========================================
+    // EXPORTAR A CSV
+    // ==========================================
+    document.getElementById('btn-exportar-csv').addEventListener('click', () => {
+        if (!ultimosArticulosCargados || ultimosArticulosCargados.length === 0) {
+            alert("No hay datos en el ranking de artículos para exportar.");
+            return;
+        }
+
+        let csvContent = "data:text/csv;charset=utf-8,SKU,Articulo,Cantidad Vendida,Ingreso Generado (BOB)\r\n";
+
+        ultimosArticulosCargados.forEach(art => {
+            const sku = art._id || '';
+            const nombre = (art.nombre_articulo || '').replace(/"/g, '""');
+            const cantidad = art.cantidad_vendida || 0;
+            const ingreso = art.ingreso_generado || 0;
+            
+            csvContent += `"${sku}","${nombre}",${cantidad},${ingreso}\r\n`;
+        });
+
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", `reporte_articulos_${inputDesde.value}_al_${inputHasta.value}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    });
 
     // Disparar evento de submit
     document.getElementById('form-filtros').addEventListener('submit', (e) => {

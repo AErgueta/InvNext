@@ -186,3 +186,41 @@ async def actualizar_password(
     await usuario_actual.save()
 
     return {"mensaje": "Contraseña actualizada exitosamente."}
+
+# --- NUEVO ESQUEMA PARA ACTUALIZAR ---
+class UsuarioUpdate(BaseModel):
+    rol: RolUsuario
+    sucursal_id: str | None = None
+    caja_id: str | None = None
+    almacen_id: str | None = None
+
+# ==========================================
+# ENDPOINTS DE ADMINISTRACIÓN DE USUARIOS
+# ==========================================
+@router.get("/usuarios", status_code=status.HTTP_200_OK)
+async def listar_usuarios(usuario_actual: Usuario = Depends(obtener_usuario_admin)):
+    """Devuelve la lista de todos los usuarios para el panel de administración."""
+    usuarios = await Usuario.find_all().to_list()
+    # Limpiamos los hashes de contraseña antes de enviarlos al frontend
+    for u in usuarios:
+        u.hashed_password = "" 
+    return usuarios
+
+@router.put("/usuarios/{username}", status_code=status.HTTP_200_OK)
+async def actualizar_usuario(
+    username: str,
+    datos: UsuarioUpdate,
+    usuario_actual: Usuario = Depends(obtener_usuario_admin)
+):
+    """Actualiza el rol y los accesos operativos de un usuario existente."""
+    usuario = await Usuario.find_one(Usuario.username == username)
+    if not usuario:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado.")
+
+    usuario.rol = datos.rol
+    usuario.sucursal_id = datos.sucursal_id
+    usuario.caja_id = datos.caja_id
+    usuario.almacen_id = datos.almacen_id
+    
+    await usuario.save()
+    return {"mensaje": f"Usuario '{username}' actualizado correctamente."}

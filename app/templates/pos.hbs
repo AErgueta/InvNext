@@ -176,24 +176,34 @@
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content border-0 shadow-lg">
             <div class="modal-header bg-primary text-white">
-                <h5 class="modal-title"><i class="bi bi-box-arrow-in-right"></i> Apertura de Turno</h5>
+                <h5 class="modal-title fw-bold"><i class="bi bi-box-arrow-in-right me-2"></i>Apertura de Turno</h5>
             </div>
-            <div class="modal-body">
-                <p class="text-muted">Para comenzar a operar, por favor declara el fondo de caja (efectivo inicial).</p>
-                <div class="mb-3">
-                    <label class="form-label fw-bold">Monto Inicial (Bs.)</label>
-                    <input type="number" id="input-monto-inicial" class="form-control form-control-lg text-end fs-4" min="0" step="0.5" value="0">
+            <form id="form-apertura-caja">
+                <div class="modal-body p-4">
+                    <p class="text-muted small mb-3">
+                        Para comenzar a operar en el punto de venta, declara el fondo de caja (efectivo inicial).
+                    </p>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Monto Inicial (Bs.)</label>
+                        <input type="number" step="0.01" min="0" class="form-control form-control-lg text-end fw-bold" id="monto-inicial" value="0" required>
+                    </div>
                 </div>
-            </div>
-            <div class="modal-footer bg-light">
-                <button type="button" class="btn btn-success btn-lg w-100 fw-bold" id="btn-abrir-caja">
-                    <i class="bi bi-unlock"></i> ABRIR CAJA
-                </button>
-            </div>
+                <div class="modal-footer bg-light justify-content-between">
+                    <!-- BOTÓN DE ESCAPE: Permite volver al dashboard sin abrir caja -->
+                    <a href="/vistas/dashboard" class="btn btn-outline-secondary">
+                        <i class="bi bi-arrow-left me-1"></i> Salir al Dashboard
+                    </a>
+                    <!--<button type="submit" class="btn btn-success fw-bold" id="btn-abrir-caja">
+                        <i class="bi bi-unlock-fill me-1"></i> ABRIR CAJA
+                    </button>-->
+                    <button type="button" class="btn btn-success" id="btn-abrir-caja">
+                        <i class="bi bi-unlock-fill"></i> ABRIR CAJA
+                    </button>
+                </div>
+            </form>
         </div>
     </div>
 </div>
-
 <!-- ========================================== -->
 <!-- MODAL: CIERRE DE CAJA (ARQUEO)             -->
 <!-- ========================================== -->

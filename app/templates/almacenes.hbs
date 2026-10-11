@@ -1,0 +1,91 @@
+{% extends "layouts/main.hbs" %}
+
+{% block contenido %}
+<div class="row align-items-center mb-4">
+    <div class="col-md-8">
+        <h2 class="text-primary fw-bold mb-1"><i class="bi bi-box-seam"></i> Gestión de Almacenes</h2>
+        <p class="text-muted mb-0">Administración de depósitos e infraestructura de inventario.</p>
+    </div>
+    <div class="col-md-4 text-end">
+        <button class="btn btn-primary fw-bold" onclick="abrirModalCrear()">
+            <i class="bi bi-plus-lg"></i> Nuevo Almacén
+        </button>
+    </div>
+</div>
+
+<div class="card shadow-sm border-0">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Código</th>
+                        <th>Nombre</th>
+                        <th>Sucursal</th>
+                        <th>Descripción</th>
+                        <th>Dirección</th>
+                        <th>Estado</th>
+                        <th class="text-end">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody id="tabla-almacenes">
+                    <tr><td colspan="6" class="text-center py-4">Cargando almacenes...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Crear / Editar Almacén -->
+<div class="modal fade" id="modalAlmacen" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title fw-bold" id="modalAlmacenTitulo">Nuevo Almacén</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="form-almacen">
+                <div class="modal-body">
+                    <input type="hidden" id="almacen-modo" value="crear">
+                    <input type="hidden" id="almacen-codigo-original" value="">
+                    
+                    <div class="row">
+                        <div class="col-6 mb-3">
+                            <label class="form-label fw-bold">Código</label>
+                            <input type="text" class="form-control text-uppercase" id="almacen-codigo" placeholder="Ej: ALM-CENTRAL" required>
+                        </div>
+                        <div class="col-6 mb-3">
+                            <label class="form-label fw-bold">Nombre</label>
+                            <input type="text" class="form-control" id="almacen-nombre" placeholder="Ej: Almacén Central" required>
+                        </div>
+                        <div class="col-4 mb-3">
+                            <label class="form-label fw-bold">Sucursal</label>
+                            <select class="form-select" id="almacen-sucursal" required>
+                                <option value="">Cargando sucursales...</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Descripción (Opcional)</label>
+                        <input type="text" class="form-control" id="almacen-descripcion">
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Dirección / Ubicación (Opcional)</label>
+                        <input type="text" class="form-control" id="almacen-direccion">
+                    </div>
+                </div>
+                <div class="modal-footer bg-light">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary fw-bold" id="btn-guardar-almacen">Guardar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/almacenes.js"></script>
+{% endblock %}

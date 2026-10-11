@@ -7,7 +7,7 @@
         <p class="text-muted mb-0">Rendimiento de ventas, sucursales y productos.</p>
     </div>
     
-    <!-- Filtro de Fechas -->
+    <!-- Filtro de Fechas y Exportación -->
     <div class="col-md-6 text-end">
         <form id="form-filtros" class="d-flex justify-content-end align-items-center gap-2">
             <div>
@@ -18,9 +18,12 @@
                 <small class="text-muted fw-bold d-block text-start">Hasta</small>
                 <input type="date" class="form-control border-primary" id="fecha-hasta" required>
             </div>
-            <div class="align-self-end">
-                <button type="submit" class="btn btn-primary fw-bold" id="btn-consultar">
-                    <i class="bi bi-search"></i> Consultar
+            <div class="align-self-end d-flex gap-1">
+                <button type="submit" class="btn btn-primary fw-bold" id="btn-consultar" title="Consultar Reportes">
+                    <i class="bi bi-search"></i>
+                </button>
+                <button type="button" class="btn btn-success fw-bold" id="btn-exportar-csv" title="Exportar Top Artículos a CSV">
+                    <i class="bi bi-file-earmark-spreadsheet"></i> CSV
                 </button>
             </div>
         </form>
@@ -33,8 +36,8 @@
         <div class="card shadow-sm border-0 border-start border-success border-4">
             <div class="card-body">
                 <h6 class="text-muted fw-bold mb-1">Ingresos Totales (Neto)</h6>
-                <h3 class="fw-bold text-success mb-0" id="resumen-ingresos">$ 0.00</h3>
-                <small class="text-muted" id="resumen-descuentos">Descuentos: $ 0.00</small>
+                <h3 class="fw-bold text-success mb-0" id="resumen-ingresos">Bs 0,00</h3>
+                <small class="text-muted" id="resumen-descuentos">Descuentos: Bs 0,00</small>
             </div>
         </div>
     </div>
@@ -51,7 +54,7 @@
         <div class="card shadow-sm border-0 border-start border-warning border-4">
             <div class="card-body">
                 <h6 class="text-muted fw-bold mb-1">Ticket Promedio</h6>
-                <h3 class="fw-bold text-warning mb-0" id="resumen-promedio">$ 0.00</h3>
+                <h3 class="fw-bold text-warning mb-0" id="resumen-promedio">Bs 0,00</h3>
                 <small class="text-muted">Gasto promedio por cliente</small>
             </div>
         </div>

@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Request, Depends
 from fastapi.templating import Jinja2Templates
+from fastapi.responses import HTMLResponse
 
 from app.models.usuario import Usuario
 from .auth import obtener_usuario_admin
@@ -132,4 +133,49 @@ async def vista_reportes(request: Request):
         request=request, 
         name="reportes.hbs",
         context={"mostrar_menu": True}
+    )
+
+@router.get("/usuarios")
+async def vista_usuarios(request: Request):
+    """Renderiza el panel de gestión de personal."""
+    return templates.TemplateResponse(
+        request=request, 
+        name="usuarios.hbs",
+        context={"mostrar_menu": True}
+    )
+
+@router.get("/almacenes")
+async def vista_almacenes(request: Request):
+    """Renderiza el panel de gestión de almacenes."""
+    return templates.TemplateResponse(
+        request=request, 
+        name="almacenes.hbs",
+        context={"mostrar_menu": True}
+    )
+
+@router.get("/cajas")
+async def vista_cajas(request: Request):
+    """Renderiza el panel de gestión de cajas registradoras."""
+    return templates.TemplateResponse(
+        request=request, 
+        name="cajas.hbs",
+        context={"mostrar_menu": True}
+    )
+
+
+@router.get("/sucursales")
+async def vista_sucursales(request: Request):
+    """Renderiza el panel de gestión de sucursales."""
+    return templates.TemplateResponse(
+        request=request, 
+        name="sucursales.hbs",
+        context={"mostrar_menu": True}
+    )
+
+@router.get("/reporte-stock", response_class=HTMLResponse)
+async def vista_reporte_stock(request: Request):
+    return templates.TemplateResponse(
+        request=request, 
+        name="reporte_stock.hbs", 
+        context={"request": request, "mostrar_menu": True}
     )

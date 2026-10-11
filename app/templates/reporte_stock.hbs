@@ -1,0 +1,76 @@
+{% extends "layouts/main.hbs" %}
+
+{% block contenido %}
+<!-- Estilos para una impresión limpia -->
+<style>
+    @media print {
+        nav, header, aside, .sidebar, .navbar, .no-print { display: none !important; }
+        body { background-color: white !important; padding: 0 !important; margin: 0 !important; }
+        .card { border: none !important; box-shadow: none !important; }
+        .table { width: 100% !important; }
+        * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+    }
+</style>
+
+<div class="row mb-4 align-items-center">
+    <div class="col">
+        <h2 class="mb-0 text-primary"><i class="bi bi-boxes"></i> Reporte de Stock por Almacén</h2>
+        <p class="text-muted">Consulta rápida de existencias en tiempo real.</p>
+    </div>
+    <div class="col-auto no-print">
+        <button class="btn btn-outline-secondary shadow-sm" onclick="window.print()">
+            <i class="bi bi-printer"></i> Imprimir Reporte
+        </button>
+    </div>
+</div>
+
+<!-- Filtro de Almacén -->
+<div class="card shadow-sm mb-4 no-print">
+    <div class="card-body">
+        <div class="row align-items-end g-3">
+            <div class="col-md-5">
+                <label for="select-almacen-reporte" class="form-label fw-bold">Almacén a Consultar</label>
+                <select class="form-select border-primary" id="select-almacen-reporte">
+                    <option value="">⏳ Cargando almacenes disponibles...</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <button class="btn btn-primary w-100 fw-bold" id="btn-consultar-stock">
+                    <i class="bi bi-search"></i> Consultar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Tabla de Resultados -->
+<div class="card shadow-sm">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover table-striped align-middle mb-0">
+                <thead class="table-dark">
+                    <tr>
+                        <th style="width: 15%;">SKU</th>
+                        <th style="width: 40%;">Descripción del Artículo</th>
+                        <th style="width: 20%;">Categoría</th>
+                        <th class="text-center" style="width: 15%;">Stock Físico</th>
+                        <th style="width: 10%;">Unidad</th>
+                    </tr>
+                </thead>
+                <tbody id="tabla-reporte-stock">
+                    <tr>
+                        <td colspan="5" class="text-center text-muted py-5">
+                            <i class="bi bi-arrow-up-circle fs-2 d-block mb-2"></i>
+                            Seleccione un almacén y haga clic en "Consultar" para generar el reporte.
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/reporte_stock.js"></script>
+{% endblock %}

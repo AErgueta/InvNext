@@ -5,13 +5,16 @@ from datetime import datetime, timezone
 import uuid
 from zoneinfo import ZoneInfo
 
+# --- NUEVO: IMPORTAMOS EL MAESTRO DE ARTÍCULOS ---
+from app.models.articulo import Articulo
+# -------------------------------------------------
+
 from app.models.movimiento import Movimiento, TipoMovimiento
 from app.models.traspaso import TraspasoInventario, EstadoTraspaso, DetalleTraspaso, RecepcionTraspasoReq
 from app.routers.auth import obtener_usuario_actual
 
 router = APIRouter(prefix="/traspasos", tags=["Traspasos de Inventario"])
 
-# 1. Esquema que recibe los datos desde el frontend para CREAR (La pantalla)
 class TraspasoCreate(BaseModel):
     almacen_origen_id: str
     almacen_destino_id: str
@@ -28,7 +31,6 @@ async def crear_traspaso(
     if payload.almacen_origen_id == payload.almacen_destino_id:
         raise HTTPException(status_code=400, detail="El origen y destino no pueden ser el mismo.")
 
-    # Generar un folio único y corto para la boleta
     folio_generado = f"TR-{uuid.uuid4().hex[:6].upper()}"
 
     # ==========================================
@@ -50,7 +52,15 @@ async def crear_traspaso(
         )
         await mov_salida.insert()
 
-    # Variables por defecto para el estado "En Tránsito"
+        # --- NUEVO: DESCONTAR STOCK FÍSICO DEL MAESTRO ---
+        articulo = await Articulo.find_one(Articulo.sku == art["sku_articulo"])
+        if articulo:
+            for stock_alm in articulo.stock_por_almacen:
+                if stock_alm.codigo_almacen == payload.almacen_origen_id:
+                    stock_alm.cantidad -= art["cantidad"]
+                    break
+            await articulo.save()
+
     estado_actual = EstadoTraspaso.EN_TRANSITO
     fecha_recepcion = None
     usuario_recibe = None
@@ -79,6 +89,22 @@ async def crear_traspaso(
             )
             await mov_entrada.insert()
 
+            # --- NUEVO: SUMAR STOCK FÍSICO AL MAESTRO ---
+            articulo = await Articulo.find_one(Articulo.sku == art["sku_articulo"])
+            if articulo:
+                encontrado = False
+                for stock_alm in articulo.stock_por_almacen:
+                    if stock_alm.codigo_almacen == payload.almacen_destino_id:
+                        stock_alm.cantidad += art["cantidad"]
+                        encontrado = True
+                        break
+                if not encontrado:
+                    articulo.stock_por_almacen.append({
+                        "codigo_almacen": payload.almacen_destino_id,
+                        "cantidad": art["cantidad"]
+                    })
+                await articulo.save()
+
     # ==========================================
     # PASO C: GUARDAR LA BOLETA GLOBAL
     # ==========================================
@@ -103,23 +129,17 @@ async def crear_traspaso(
         "recepcion_inmediata": payload.recepcion_automatica
     }
 
-
 # ==========================================
 # RUTAS DE CONSULTA Y RECEPCIÓN
 # ==========================================
 
 @router.get("/pendientes/{almacen_id}")
 async def obtener_pendientes(almacen_id: str, usuario_actual = Depends(obtener_usuario_actual)):
-    """
-    Devuelve la lista de camiones/boletas que están en camino hacia este almacén.
-    """
     pendientes = await TraspasoInventario.find(
         TraspasoInventario.almacen_destino_id == almacen_id,
         TraspasoInventario.estado == EstadoTraspaso.EN_TRANSITO
     ).to_list()
-    
     return pendientes
-
 
 @router.put("/{folio}/recibir")
 async def recibir_traspaso(
@@ -127,7 +147,6 @@ async def recibir_traspaso(
     payload: RecepcionTraspasoReq, 
     usuario_actual = Depends(obtener_usuario_actual)
 ):
-    # 1. Buscamos el traspaso en la base de datos
     traspaso = await TraspasoInventario.find_one(TraspasoInventario.folio == folio)
     if not traspaso:
         raise HTTPException(status_code=404, detail="Traspaso no encontrado")
@@ -135,7 +154,6 @@ async def recibir_traspaso(
     if traspaso.estado != EstadoTraspaso.EN_TRANSITO:
         raise HTTPException(status_code=400, detail="El traspaso no está en tránsito")
 
-    # 2. Procesamos los artículos y detectamos discrepancias
     hubo_discrepancia = False
     historial_recepcion = []
 
@@ -151,7 +169,6 @@ async def recibir_traspaso(
         })
 
         # 3. ACTUALIZAR KARDEX (Destino)
-        # Solo ingresamos stock si realmente llegó mercadería (cantidad_recibida > 0)
         if item.cantidad_recibida > 0:
             mov_entrada = Movimiento(
                 sku_articulo=item.sku_articulo,
@@ -160,7 +177,7 @@ async def recibir_traspaso(
                 usuario=usuario_actual.username,
                 tipo_movimiento=TipoMovimiento.ENTRADA_TRASPASO,
                 concepto=f"Recepción física desde {traspaso.almacen_origen_id} (Boleta {traspaso.folio})",
-                cantidad=item.cantidad_recibida,  # Se registra solo lo que el usuario reportó que llegó
+                cantidad=item.cantidad_recibida,
                 flujo_trabajo_seleccionado=payload.flujo_trabajo_seleccionado,
                 almacen_contraparte=traspaso.almacen_origen_id,
                 id_referencia=folio,
@@ -168,7 +185,23 @@ async def recibir_traspaso(
             )
             await mov_entrada.insert()
 
-    # 4. Actualizamos el estado de la boleta
+            # --- NUEVO: SUMAR STOCK FÍSICO AL MAESTRO ---
+            articulo = await Articulo.find_one(Articulo.sku == item.sku_articulo)
+            if articulo:
+                encontrado = False
+                for stock_alm in articulo.stock_por_almacen:
+                    if stock_alm.codigo_almacen == traspaso.almacen_destino_id:
+                        stock_alm.cantidad += item.cantidad_recibida
+                        encontrado = True
+                        break
+                
+                if not encontrado:
+                    articulo.stock_por_almacen.append({
+                        "codigo_almacen": traspaso.almacen_destino_id,
+                        "cantidad": item.cantidad_recibida
+                    })
+                await articulo.save()
+
     nuevo_estado = EstadoTraspaso.COMPLETADO_CON_DISCREPANCIA if hubo_discrepancia else EstadoTraspaso.COMPLETADO
     
     traspaso.estado = nuevo_estado

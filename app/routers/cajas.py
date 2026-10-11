@@ -1,11 +1,13 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from fastapi import APIRouter, HTTPException, status, Depends
+from pydantic import BaseModel
+from typing import List
 
 from app.models.sesion_caja import SesionCaja, AperturaCajaRequest, CierreCajaRequest
 from app.models.caja import Caja
 from app.models.venta import Venta, EstadoVenta
-from app.routers.auth import obtener_usuario_actual
+from app.routers.auth import obtener_usuario_actual, obtener_usuario_admin
 from app.models.usuario import Usuario
 
 router = APIRouter(
@@ -14,7 +16,64 @@ router = APIRouter(
 )
 
 # ==========================================
-# ENDPOINT 1: ABRIR CAJA
+# ESQUEMAS PARA ADMINISTRACIÓN (CRUD)
+# ==========================================
+class CajaUpdate(BaseModel):
+    codigo: str
+    nombre: str
+    codigo_sucursal: str
+    codigo_almacen: str 
+
+class EstadoCaja(BaseModel):
+    activa: bool
+
+# ==========================================
+# ENDPOINTS DE ADMINISTRACIÓN (PANEL ADMIN)
+# ==========================================
+@router.post("/", status_code=status.HTTP_201_CREATED)
+async def crear_caja(caja: Caja, admin: Usuario = Depends(obtener_usuario_admin)):
+    existe = await Caja.find_one(Caja.codigo == caja.codigo)
+    if existe:
+        raise HTTPException(status_code=400, detail="El código de caja ya existe.")
+    
+    await caja.insert()
+    return caja
+
+@router.get("/")
+async def listar_cajas(admin: Usuario = Depends(obtener_usuario_admin)):
+    return await Caja.find_all().to_list()
+
+@router.put("/{codigo}", status_code=status.HTTP_200_OK)
+async def editar_caja(codigo: str, datos: CajaUpdate, admin: Usuario = Depends(obtener_usuario_admin)):
+    caja = await Caja.find_one(Caja.codigo == codigo)
+    if not caja:
+        raise HTTPException(status_code=404, detail="Caja no encontrada.")
+    
+    if caja.codigo != datos.codigo:
+        existe = await Caja.find_one(Caja.codigo == datos.codigo)
+        if existe:
+            raise HTTPException(status_code=400, detail="El nuevo código ya está en uso.")
+
+    caja.codigo = datos.codigo
+    caja.nombre = datos.nombre
+    caja.codigo_sucursal = datos.codigo_sucursal
+    caja.codigo_almacen = datos.codigo_almacen
+    
+    await caja.save()
+    return caja
+
+@router.patch("/{codigo}/estado", status_code=status.HTTP_200_OK)
+async def cambiar_estado(codigo: str, estado: EstadoCaja, admin: Usuario = Depends(obtener_usuario_admin)):
+    caja = await Caja.find_one(Caja.codigo == codigo)
+    if not caja:
+        raise HTTPException(status_code=404, detail="Caja no encontrada.")
+    
+    caja.activa = estado.activa
+    await caja.save()
+    return {"mensaje": "Estado actualizado correctamente."}
+
+# ==========================================
+# ENDPOINT 1: ABRIR CAJA (OPERACIÓN POS)
 # ==========================================
 @router.post("/abrir", status_code=status.HTTP_201_CREATED)
 async def abrir_caja(
@@ -128,12 +187,12 @@ async def cerrar_caja(
     return {
         "requiere_confirmacion": False,
         "mensaje": "Arqueo de caja realizado con éxito.",
-        "monto_inicial": sesion.monto_inicial, # Nuevo: Necesario para el ticket
+        "monto_inicial": sesion.monto_inicial, 
         "monto_calculado_sistema": sesion.monto_cierre_calculado,
         "monto_declarado_cajero": sesion.monto_cierre_real,
         "diferencia": sesion.diferencia,
         "cuadre": "PERFECTO" if sesion.diferencia == 0 else ("FALTANTE" if sesion.diferencia < 0 else "SOBRANTE"),
-        "resumen_pagos": resumen_pagos # Nuevo: Enviamos el desglose al frontend
+        "resumen_pagos": resumen_pagos 
     }
 
 # ==========================================

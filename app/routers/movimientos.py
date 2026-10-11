@@ -8,7 +8,6 @@ import csv
 import io
 import uuid
 
-
 from bson import ObjectId
 
 from app.routers.auth import obtener_usuario_actual
@@ -97,6 +96,7 @@ class PeticionAjusteFisico(BaseModel):
     concepto: str = Field(..., description="Motivo (ej. 'Auditoría mensual')")
     flujo_trabajo_seleccionado: str = Field(..., description="El usuario debe elegir obligatoriamente su flujo")
     numero_lote: Optional[str] = None
+    fecha_caducidad: Optional[str] = None # <-- AÑADIDO: Recibir la fecha desde el Frontend
 
 # 4. Enrutador
 router = APIRouter(
@@ -109,7 +109,6 @@ async def registrar_movimiento(
     peticion: PeticionMovimiento,
     usuario_actual = Depends(obtener_usuario_actual)
 ):
-    # --- 1. VALIDACIONES DE SEGURIDAD BÁSICAS ---
     if usuario_actual.rol == RolUsuario.OPERADOR:
         if peticion.codigo_almacen != usuario_actual.codigo_almacen:
             raise HTTPException(
@@ -129,7 +128,6 @@ async def registrar_movimiento(
             detail=f"El artículo con SKU '{peticion.sku_articulo}' no existe."
         )
 
-    # --- 2. CREACIÓN DEL DOCUMENTO (Solo intención, no afecta stock físico) ---
     movimiento = Movimiento(
         sku_articulo=peticion.sku_articulo,
         codigo_almacen=peticion.codigo_almacen,
@@ -142,11 +140,8 @@ async def registrar_movimiento(
         id_referencia=peticion.id_referencia,
         precio_venta=peticion.precio_venta,
         fecha_vencimiento=peticion.fecha_vencimiento,
-        
-        # ---> LÍNEA AGREGADA: Pasamos el flujo seleccionado por el usuario <---
         flujo_trabajo_seleccionado=peticion.flujo_trabajo_seleccionado,
-        
-        estado="PENDIENTE" # <--- El candado inicial
+        estado="PENDIENTE" 
     )
     
     await movimiento.insert()
@@ -157,7 +152,6 @@ async def registrar_ingreso_manual(
     peticion: PeticionIngresoManual,
     usuario_actual: Usuario = Depends(obtener_usuario_actual)
 ):
-    # 1. Validaciones de Seguridad
     if usuario_actual.rol == RolUsuario.OPERADOR:
         if peticion.codigo_almacen != usuario_actual.codigo_almacen:
             raise HTTPException(
@@ -172,14 +166,12 @@ async def registrar_ingreso_manual(
             detail=f"El artículo con SKU '{peticion.sku_articulo}' no existe."
         )
 
-    # 2. Autogeneración de Lote Inteligente
     lote_final = peticion.numero_lote
     if not lote_final or lote_final.strip() == "":
         fecha_str = datetime.now().strftime("%Y%m%d")
         hash_corto = uuid.uuid4().hex[:4].upper()
         lote_final = f"LOT-{fecha_str}-{hash_corto}"
 
-    # 3. Creación del Documento (Con candado de PENDIENTE)
     nuevo_movimiento = Movimiento(
         sku_articulo=peticion.sku_articulo,
         codigo_almacen=peticion.codigo_almacen,
@@ -207,7 +199,6 @@ async def registrar_egreso_manual(
     peticion: PeticionEgresoManual,
     usuario_actual: Usuario = Depends(obtener_usuario_actual)
 ):
-    # --- 1. VALIDACIONES DE SEGURIDAD ---
     if usuario_actual.rol == RolUsuario.OPERADOR:
         if peticion.codigo_almacen != usuario_actual.codigo_almacen:
             raise HTTPException(
@@ -232,7 +223,6 @@ async def registrar_egreso_manual(
             detail=f"Stock físico insuficiente en el almacén {peticion.codigo_almacen}. Se solicitaron {peticion.cantidad} pero solo hay {stock_almacen.cantidad if stock_almacen else 0}."
         )
 
-    # --- 2. EXTRACCIÓN Y ORDENAMIENTO FEFO ---
     lotes_activos = await Lote.find(
         Lote.sku_articulo == peticion.sku_articulo,
         Lote.cantidad_actual > 0
@@ -244,10 +234,9 @@ async def registrar_egreso_manual(
         if s_alm and s_alm.cantidad > 0:
             lotes_validos_en_sucursal.append((l, s_alm))
 
-    # Función segura para ordenar fechas (FEFO)
     def obtener_fecha_orden(lote):
         if not lote.fecha_vencimiento:
-            return datetime.max # Si no tiene vencimiento, va al final de la cola
+            return datetime.max 
         if isinstance(lote.fecha_vencimiento, datetime):
             return lote.fecha_vencimiento.replace(tzinfo=None)
         try:
@@ -255,10 +244,8 @@ async def registrar_egreso_manual(
         except:
             return datetime.max
 
-    # Ordenamos: primero los que vencen más pronto
     lotes_validos_en_sucursal.sort(key=lambda x: obtener_fecha_orden(x[0]))
 
-    # --- 3. DESCUENTO EN CASCADA ---
     cantidad_restante = peticion.cantidad
     movimientos_a_guardar = []
     lotes_a_guardar = []
@@ -269,14 +256,12 @@ async def registrar_egreso_manual(
             
         cantidad_a_tomar = min(stock_lote_alm.cantidad, cantidad_restante)
         
-        # Descuento del lote
         lote.cantidad_actual -= cantidad_a_tomar
         stock_lote_alm.cantidad -= cantidad_a_tomar
         lotes_a_guardar.append(lote) 
         
         precio_v = articulo.precio_venta if peticion.tipo_movimiento == TipoMovimiento.SALIDA_VENTA else None
         
-        # Generación del movimiento individual asegurando el flujo elegido
         nuevo_movimiento = Movimiento(
             sku_articulo=articulo.sku,
             codigo_almacen=peticion.codigo_almacen,
@@ -287,7 +272,7 @@ async def registrar_egreso_manual(
             cantidad=cantidad_a_tomar,
             costo_unitario=lote.costo_unitario, 
             precio_venta=precio_v,
-            flujo_trabajo_seleccionado=peticion.flujo_trabajo_seleccionado, # Control de destino manual
+            flujo_trabajo_seleccionado=peticion.flujo_trabajo_seleccionado, 
             id_referencia=peticion.id_referencia,
             estado="EJECUTADO"
         )
@@ -295,11 +280,9 @@ async def registrar_egreso_manual(
         movimientos_a_guardar.append(nuevo_movimiento) 
         cantidad_restante -= cantidad_a_tomar
         
-    # Descuento global del artículo
     articulo.stock_actual -= peticion.cantidad
     stock_almacen.cantidad -= peticion.cantidad
     
-    # --- 4. PERSISTENCIA EN BASE DE DATOS ---
     for lote in lotes_a_guardar:
         await lote.save()
         
@@ -327,7 +310,6 @@ async def ejecutar_movimiento(
     if getattr(movimiento, "estado", "EJECUTADO") == "EJECUTADO":
         raise HTTPException(status_code=400, detail="Este movimiento ya fue procesado y sumado al inventario.")
 
-    # --- 1. VALIDACIÓN DE GOBERNANZA (EL CANDADO) ---
     instancia = await InstanciaTracking.find_one(InstanciaTracking.referencia_id == str(movimiento.id))
     if instancia and instancia.estado_general != "COMPLETADO":
         raise HTTPException(
@@ -335,7 +317,6 @@ async def ejecutar_movimiento(
             detail="No se puede procesar el inventario. El flujo de aprobación aún no ha concluido."
         )
 
-    # --- 2. LÓGICA MATEMÁTICA Y GESTIÓN DE LOTES (Tu código original intacto) ---
     articulo = await Articulo.find_one(Articulo.sku == movimiento.sku_articulo)
     
     if not articulo.controla_lotes:
@@ -417,7 +398,6 @@ async def ejecutar_movimiento(
             articulo.stock_actual += diferencia
             variacion_stock = diferencia
 
-    # --- 3. IMPACTAR STOCK EN EL ARTÍCULO ---
     almacen_encontrado = False
     for stock_alm in articulo.stock_por_almacen:
         if stock_alm.codigo_almacen == movimiento.codigo_almacen:
@@ -428,7 +408,6 @@ async def ejecutar_movimiento(
     if not almacen_encontrado:
         articulo.stock_por_almacen.append(StockAlmacen(codigo_almacen=movimiento.codigo_almacen, cantidad=variacion_stock))
 
-    # --- 4. GUARDADO FINAL ---
     movimiento.estado = "EJECUTADO"
     await articulo.save()
     await movimiento.save()
@@ -482,7 +461,7 @@ async def registrar_traspaso(
         codigo_almacen=peticion.codigo_almacen_origen,
         almacen_contraparte=peticion.codigo_almacen_destino,
         numero_lote=peticion.numero_lote,
-        usuario=usuario_actual.username, # <--- SEGURIDAD APLICADA
+        usuario=usuario_actual.username, 
         tipo_movimiento=TipoMovimiento.SALIDA_TRASPASO,
         concepto=peticion.concepto,
         cantidad=peticion.cantidad,
@@ -496,7 +475,7 @@ async def registrar_traspaso(
         codigo_almacen=peticion.codigo_almacen_destino,
         almacen_contraparte=peticion.codigo_almacen_origen,
         numero_lote=peticion.numero_lote,
-        usuario=usuario_actual.username, # <--- SEGURIDAD APLICADA
+        usuario=usuario_actual.username, 
         tipo_movimiento=TipoMovimiento.ENTRADA_TRASPASO,
         concepto=peticion.concepto,
         cantidad=peticion.cantidad,
@@ -525,81 +504,102 @@ async def registrar_salida_fifo(
         if peticion.codigo_almacen != usuario_actual.codigo_almacen:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Acceso denegado: Solo puedes procesar salidas automáticas desde tu almacén asignado '{usuario_actual.codigo_almacen}'."
+                detail=f"Acceso denegado: Solo puedes procesar salidas desde tu almacén asignado."
             )
 
     if peticion.tipo_movimiento not in [TipoMovimiento.SALIDA_VENTA, TipoMovimiento.SALIDA_PRODUCCION, TipoMovimiento.SALIDA_TRASPASO]:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="El tipo de movimiento debe ser una salida."
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="El tipo de movimiento debe ser una salida.")
         
     if peticion.cantidad <= 0:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="La cantidad debe ser mayor a cero."
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="La cantidad debe ser mayor a cero.")
 
     articulo = await Articulo.find_one(Articulo.sku == peticion.sku_articulo)
     if not articulo:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"El artículo con SKU '{peticion.sku_articulo}' no existe."
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"El artículo '{peticion.sku_articulo}' no existe.")
         
-    stock_almacen = next((alm for alm in articulo.stock_por_almacen if alm.codigo_almacen == peticion.codigo_almacen), None)
-    if not stock_almacen or stock_almacen.cantidad < peticion.cantidad:
+    # --- VALIDACIÓN CON LA FUENTE DE VERDAD REAL ---
+    stock_disponible_real = 0.0
+    lotes_validos_en_sucursal = []
+    
+    if getattr(articulo, "controla_lotes", False):
+        lotes_activos = await Lote.find(
+            Lote.sku_articulo == peticion.sku_articulo,
+            Lote.cantidad_actual > 0
+        ).sort("+_id").to_list()
+        
+        for l in lotes_activos:
+            s_alm = next((sl for sl in l.stock_por_almacen if getattr(sl, "codigo_almacen", "") == peticion.codigo_almacen), None)
+            if s_alm and s_alm.cantidad > 0:
+                lotes_validos_en_sucursal.append((l, s_alm))
+                stock_disponible_real += s_alm.cantidad
+    else:
+        stock_almacen = next((alm for alm in articulo.stock_por_almacen if getattr(alm, "codigo_almacen", "") == peticion.codigo_almacen), None)
+        if stock_almacen:
+            stock_disponible_real = stock_almacen.cantidad
+
+    if stock_disponible_real < peticion.cantidad:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Stock insuficiente en el almacén {peticion.codigo_almacen}."
+            detail=f"Stock insuficiente en el almacén. Solicitado: {peticion.cantidad}, Disponible físico real: {stock_disponible_real}."
         )
-        
-    lotes_activos = await Lote.find(
-        Lote.sku_articulo == peticion.sku_articulo,
-        Lote.cantidad_actual > 0
-    ).sort("+_id").to_list()
-    
-    lotes_validos_en_sucursal = []
-    for l in lotes_activos:
-        s_alm = next((sl for sl in l.stock_por_almacen if sl.codigo_almacen == peticion.codigo_almacen), None)
-        if s_alm and s_alm.cantidad > 0:
-            lotes_validos_en_sucursal.append((l, s_alm))
             
     cantidad_restante = peticion.cantidad
     movimientos_a_guardar = []
     lotes_a_guardar = []
     
-    for lote, stock_lote_alm in lotes_validos_en_sucursal:
-        if cantidad_restante <= 0:
-            break
+    if getattr(articulo, "controla_lotes", False):
+        # DESCUENTO FIFO PARA LOTES
+        for lote, stock_lote_alm in lotes_validos_en_sucursal:
+            if cantidad_restante <= 0:
+                break
+                
+            cantidad_a_tomar = min(stock_lote_alm.cantidad, cantidad_restante)
             
-        cantidad_a_tomar = min(stock_lote_alm.cantidad, cantidad_restante)
-        
-        lote.cantidad_actual -= cantidad_a_tomar
-        stock_lote_alm.cantidad -= cantidad_a_tomar
-        lotes_a_guardar.append(lote) 
-        
+            lote.cantidad_actual -= cantidad_a_tomar
+            stock_lote_alm.cantidad -= cantidad_a_tomar
+            lotes_a_guardar.append(lote) 
+            
+            precio_v = articulo.precio_venta if peticion.tipo_movimiento == TipoMovimiento.SALIDA_VENTA else None
+            
+            nuevo_movimiento = Movimiento(
+                sku_articulo=articulo.sku,
+                codigo_almacen=peticion.codigo_almacen,
+                numero_lote=lote.numero_lote,
+                usuario=usuario_actual.username, 
+                tipo_movimiento=peticion.tipo_movimiento,
+                concepto=peticion.concepto,
+                cantidad=cantidad_a_tomar,
+                costo_unitario=lote.costo_unitario, 
+                precio_venta=precio_v,
+                id_referencia=peticion.id_referencia,
+                estado="EJECUTADO"
+            )
+            movimientos_a_guardar.append(nuevo_movimiento) 
+            cantidad_restante -= cantidad_a_tomar
+    else:
+        # DESCUENTO DIRECTO PARA ARTÍCULOS SIN LOTES
         precio_v = articulo.precio_venta if peticion.tipo_movimiento == TipoMovimiento.SALIDA_VENTA else None
-        
         nuevo_movimiento = Movimiento(
             sku_articulo=articulo.sku,
             codigo_almacen=peticion.codigo_almacen,
-            numero_lote=lote.numero_lote,
-            usuario=usuario_actual.username, # <--- SEGURIDAD APLICADA
+            numero_lote="N/A",
+            usuario=usuario_actual.username, 
             tipo_movimiento=peticion.tipo_movimiento,
             concepto=peticion.concepto,
-            cantidad=cantidad_a_tomar,
-            costo_unitario=lote.costo_unitario, 
+            cantidad=peticion.cantidad,
+            costo_unitario=getattr(articulo, "costo_unitario", 0.0), 
             precio_venta=precio_v,
             id_referencia=peticion.id_referencia,
             estado="EJECUTADO"
         )
+        movimientos_a_guardar.append(nuevo_movimiento)
         
-        movimientos_a_guardar.append(nuevo_movimiento) 
-        cantidad_restante -= cantidad_a_tomar
-        
+    # Aplicar descuento en el maestro para evitar futuros desajustes
     articulo.stock_actual -= peticion.cantidad
-    stock_almacen.cantidad -= peticion.cantidad
+    for alm in articulo.stock_por_almacen:
+        if getattr(alm, "codigo_almacen", "") == peticion.codigo_almacen:
+            alm.cantidad -= peticion.cantidad
+            break
     
     for lote in lotes_a_guardar:
         await lote.save()
@@ -610,10 +610,10 @@ async def registrar_salida_fifo(
     await articulo.save()
     
     return {
-        "mensaje": f"Salida automática completada. Se descontó correctamente.",
-        "lotes_afectados": len(movimientos_a_guardar),
-        "movimientos_generados": movimientos_a_guardar
+        "mensaje": f"Salida completada. Se descontó correctamente.",
+        "lotes_afectados": len(movimientos_a_guardar)
     }
+
 
 @router.get("/", response_model=list[Movimiento], status_code=status.HTTP_200_OK)
 async def obtener_todos_los_movimientos(codigo_almacen: Optional[str] = None):
@@ -664,16 +664,15 @@ async def obtener_movimientos_por_articulo(
         
     movimientos_periodo = await Movimiento.find(*filtros_periodo).sort(+Movimiento.fecha_registro).to_list()
     
-    # ---> NUEVO: Buscamos el artículo para leer sus metadatos <---
     articulo = await Articulo.find_one(Articulo.sku == sku)
-    unidad = "UNIDADES" # Valor por defecto si no tiene metadatos
+    unidad = "UNIDADES" 
     if articulo and articulo.metadatos:
         unidad = articulo.metadatos.get("unidad_medida", "UNIDADES")
 
     return RespuestaKardex(
         sku=sku,
         almacen=codigo_almacen or "TODOS",
-        unidad_medida=unidad, # <--- Se lo pasamos al esquema de respuesta
+        unidad_medida=unidad, 
         saldo_inicial=saldo_inicial,
         movimientos=movimientos_periodo
     )
@@ -693,7 +692,6 @@ async def exportar_kardex_csv(
     if fecha_fin and fecha_fin.tzinfo is None:
         fecha_fin = fecha_fin.replace(tzinfo=tz_local)
 
-    # ---> NUEVO: Buscamos el artículo para extraer su unidad de medida <---
     articulo = await Articulo.find_one(Articulo.sku == sku)
     unidad = "UNIDADES" 
     if articulo and articulo.metadatos:
@@ -728,7 +726,6 @@ async def exportar_kardex_csv(
     output = io.StringIO()
     writer = csv.writer(output, delimiter=",")
     
-    # ---> NUEVO: Inyectamos la unidad dinámica en las cabeceras del CSV <---
     writer.writerow([
         "Fecha", "Almacén", "Concepto", "Lote", "Tipo Movimiento", 
         "Costo Unitario", f"Ingreso ({unidad})", f"Egreso ({unidad})", f"Saldo Físico ({unidad})", "Saldo Valor"
@@ -763,8 +760,8 @@ async def exportar_kardex_csv(
             mov.numero_lote,
             mov.tipo_movimiento.value, 
             mov.costo_unitario,
-            ingreso if ingreso > 0 else "-", # Limpieza visual
-            egreso if egreso > 0 else "-",   # Limpieza visual
+            ingreso if ingreso > 0 else "-", 
+            egreso if egreso > 0 else "-",   
             saldo_actual,
             round(saldo_valor, 2) 
         ])
@@ -831,7 +828,6 @@ async def registrar_ajuste_fisico(
 ):
     """Registra el conteo físico de un artículo y ajusta la diferencia automáticamente."""
     
-    # 1. Seguridad
     if usuario_actual.rol != RolUsuario.ADMIN:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -845,14 +841,31 @@ async def registrar_ajuste_fisico(
     diferencia = 0.0
     costo_para_movimiento = getattr(articulo, "costo_unitario", 0.0)
 
-    # 2. Lógica de cálculo de diferencias (Con o sin lotes)
+    # --- LÓGICA DE CÁLCULO DE DIFERENCIAS ---
     if articulo.controla_lotes:
         if not peticion.numero_lote:
             raise HTTPException(status_code=400, detail="El artículo controla lotes. Debes especificar el número de lote.")
             
         lote = await Lote.find_one(Lote.numero_lote == peticion.numero_lote, Lote.sku_articulo == peticion.sku_articulo)
+        
         if not lote:
-            raise HTTPException(status_code=404, detail="Lote no encontrado.")
+            fecha_vencimiento_obj = None
+            if peticion.fecha_caducidad:
+                try:
+                    fecha_vencimiento_obj = datetime.strptime(peticion.fecha_caducidad, "%Y-%m-%d")
+                except ValueError:
+                    pass
+
+            lote = Lote(
+                sku_articulo=peticion.sku_articulo,
+                numero_lote=peticion.numero_lote,
+                cantidad_inicial=0.0, 
+                cantidad_actual=0.0,
+                costo_unitario=articulo.costo_unitario if hasattr(articulo, "costo_unitario") else 0.0,
+                fecha_vencimiento=fecha_vencimiento_obj,
+                stock_por_almacen=[]
+            )
+            await lote.insert()
             
         stock_lote_alm = next((sl for sl in lote.stock_por_almacen if sl.codigo_almacen == peticion.codigo_almacen), None)
         
@@ -868,27 +881,30 @@ async def registrar_ajuste_fisico(
         await lote.save()
         
     else:
-        # Si es un artículo de stock perpetuo (sin lotes)
         stock_almacen = next((alm for alm in articulo.stock_por_almacen if alm.codigo_almacen == peticion.codigo_almacen), None)
         
         if stock_almacen:
             diferencia = peticion.cantidad_encontrada - stock_almacen.cantidad
-            stock_almacen.cantidad = peticion.cantidad_encontrada
         else:
             diferencia = peticion.cantidad_encontrada
-            articulo.stock_por_almacen.append(StockAlmacen(codigo_almacen=peticion.codigo_almacen, cantidad=peticion.cantidad_encontrada))
 
-    # 3. Aplicamos la diferencia al stock global del artículo
+    # --- NUEVO: APLICAR AL ARTÍCULO MAESTRO UNIFICADO ---
+    almacen_encontrado = False
+    for stock_alm in articulo.stock_por_almacen:
+        if stock_alm.codigo_almacen == peticion.codigo_almacen:
+            stock_alm.cantidad += diferencia
+            almacen_encontrado = True
+            break
+            
+    if not almacen_encontrado:
+        articulo.stock_por_almacen.append(StockAlmacen(codigo_almacen=peticion.codigo_almacen, cantidad=diferencia))
+
     articulo.stock_actual += diferencia
     await articulo.save()
 
-    # 4. Registramos en el Kardex SOLO si hubo una diferencia real
     movimiento_id = None
     if diferencia != 0:
-        # Si la diferencia es positiva es una ENTRADA, si es negativa es una SALIDA.
-        # Asignamos el tipo de movimiento correcto para que tu Kardex sume/reste bien.
         tipo_mov = TipoMovimiento.ENTRADA if diferencia > 0 else TipoMovimiento.SALIDA_PRODUCCION
-        
         concepto_detallado = f"{peticion.concepto} (Conteo: {peticion.cantidad_encontrada}. Ajuste de {diferencia:+.2f})"
         
         nuevo_movimiento = Movimiento(
@@ -898,7 +914,7 @@ async def registrar_ajuste_fisico(
             usuario=usuario_actual.username,
             tipo_movimiento=tipo_mov,
             concepto=concepto_detallado,
-            cantidad=abs(diferencia), # En el Kardex la cantidad se guarda en positivo
+            cantidad=abs(diferencia), 
             costo_unitario=costo_para_movimiento,
             flujo_trabajo_seleccionado=peticion.flujo_trabajo_seleccionado,
             estado="EJECUTADO"

@@ -18,6 +18,9 @@
         .nav-link { font-weight: 500; font-size: 0.95rem; }
         /* Badge unificado */
         .identity-badge { background: rgba(255, 255, 255, 0.1); border-radius: 6px; padding: 6px 12px; }
+        .navbar.sticky-top { z-index: 1030 !important;}
+        .modal { z-index: 1055 !important;}
+        .modal-backdrop { z-index: 1050 !important;}
     </style>
 </head>
 <body class="bg-light">
@@ -58,6 +61,8 @@
                         </a>
                         <ul class="dropdown-menu">
                             <li><a class="dropdown-item" href="/vistas/articulos"><i class="bi bi-journal-text"></i> Catálogo de Artículos</a></li>
+                            <!-- NUEVO ENLACE: Reporte de Stock -->
+                            <li><a class="dropdown-item fw-bold text-success" href="/vistas/reporte-stock"><i class="bi bi-inboxes text-success"></i> Reporte de Stock por Almacén</a></li>
                             <li><a class="dropdown-item" href="/vistas/kardex"><i class="bi bi-clipboard2-data"></i> Movimientos (Kardex)</a></li>
                             <li><hr class="dropdown-divider"></li>
                             <li><a class="dropdown-item" href="/vistas/ajuste-fisico"><i class="bi bi-upc-scan"></i> Conteo Físico / Ajustes</a></li>
@@ -75,14 +80,45 @@
                         </ul>
                     </li>
 
-                    <!-- Módulo: Alertas y Reportes -->
+                    <!-- Módulo: Alertas y Reportes (Unificado) -->
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
-                            <i class="bi bi-bell me-1"></i>Alertas
+                            <i class="bi bi-graph-up-arrow me-1"></i>Analítica y Alertas
                         </a>
                         <ul class="dropdown-menu">
+                            <li><a class="dropdown-item text-primary fw-bold" href="/vistas/reportes"><i class="bi bi-file-earmark-bar-graph"></i> Reportes de Ventas</a></li>
+                            <li><hr class="dropdown-divider"></li>
                             <li><a class="dropdown-item" href="/vistas/alertas"><i class="bi bi-exclamation-triangle text-warning"></i> Alertas de Stock</a></li>
                             <li><a class="dropdown-item" href="/vistas/vencimientos"><i class="bi bi-calendar-x text-danger"></i> Control de Vencimientos</a></li>
+                        </ul>
+                    </li>
+                    <!-- Módulo: Administración -->
+                    <li class="nav-item dropdown" id="menu-administracion">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+                            <i class="bi bi-gear me-1"></i>Administración
+                        </a>
+                        <ul class="dropdown-menu">
+                            <li>
+                                <a class="dropdown-item fw-bold text-primary" href="/vistas/usuarios">
+                                    <i class="bi bi-people-fill"></i> Gestión de Usuarios
+                                </a>
+                            </li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li>
+                                <a class="dropdown-item fw-bold text-primary" href="/vistas/sucursales">
+                                    <i class="bi bi-shop"></i> Gestión de Sucursales
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item fw-bold text-primary" href="/vistas/almacenes">
+                                    <i class="bi bi-buildings"></i> Gestión de Almacenes
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item fw-bold text-primary" href="/vistas/cajas">
+                                    <i class="bi bi-display"></i> Gestión de Cajas
+                                </a>
+                            </li>
                         </ul>
                     </li>
                 </ul>
@@ -121,7 +157,6 @@
         async function cargarIdentidadGlobal() {
             const token = localStorage.getItem("erp_token");
             if (!token) {
-                // Si la vista requiere menú y no hay token, lo mandamos al login
                 if (document.querySelector('.navbar')) {
                     window.location.href = "/vistas/login";
                 }
@@ -129,12 +164,10 @@
             }
 
             try {
-                // Extracción rápida del token JWT
                 const payloadBase64 = token.split('.')[1];
                 const decodedPayload = JSON.parse(atob(payloadBase64));
                 const rolUsuario = decodedPayload.rol || 'OPERADOR';
 
-                // Consulta a la BD para obtener el perfil completo (Sucursal y Caja)
                 const res = await fetch('/me', { headers: { 'Authorization': `Bearer ${token}` } });
                 
                 if (res.ok) {
@@ -144,7 +177,6 @@
                     const nombreAlmacen = perfil.almacen_id || perfil.codigo_almacen || 'GLOBAL';
                     const nombreCaja = perfil.caja_id || null;
                     
-                    // Inyectar datos en la barra
                     document.getElementById('layout-username').textContent = nombreUsuario;
                     document.getElementById('layout-almacen').textContent = nombreAlmacen;
                     
@@ -156,11 +188,7 @@
 
                     document.getElementById('user-info-badge').style.setProperty('display', 'block', 'important');
                     
-                    // ==========================================
-                    // RBAC: CONTROL VISUAL DE ACCESOS POR ROL
-                    // ==========================================
                     if (rolUsuario !== 'ADMIN') {
-                        // Ocultamos módulos sensibles a cajeros/operadores
                         const menuRecepOC = document.getElementById('menu-recepcion-oc');
                         if (menuRecepOC) menuRecepOC.style.display = 'none';
                     }

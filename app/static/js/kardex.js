@@ -1,3 +1,26 @@
+// ==========================================
+// CARGAR ALMACENES EN EL FILTRO AL INICIAR
+// ==========================================
+document.addEventListener('DOMContentLoaded', async () => {
+    const token = obtenerToken();
+    if (!token) return;
+
+    try {
+        const res = await fetch('/almacenes/', { headers: { 'Authorization': `Bearer ${token}` } });
+        const almacenes = await res.json();
+        const selectAlmacen = document.getElementById('filtro_almacen');
+        
+        if (selectAlmacen) {
+            selectAlmacen.innerHTML = '<option value="">Todos los almacenes</option>';
+            almacenes.filter(a => a.activo).forEach(a => {
+                selectAlmacen.innerHTML += `<option value="${a.codigo}">${a.nombre} (${a.codigo})</option>`;
+            });
+        }
+    } catch (error) {
+        console.error("Error cargando almacenes para el filtro:", error);
+    }
+});
+
 // Función global para obtener el token
 function obtenerToken() {
     const token = localStorage.getItem('erp_token');

@@ -18,25 +18,45 @@
                 <form id="form-ajuste-fisico">
                     
                     <div class="row g-3 mb-3">
-                        <div class="col-md-6">
+                        <!-- Búsqueda de SKU con Autocompletado -->
+                        <div class="col-md-6 position-relative">
                             <label class="form-label fw-bold">SKU del Artículo <span class="text-danger">*</span></label>
-                            <input type="text" class="form-control text-uppercase" id="ajuste-sku" placeholder="Ej. TINTA-NEGRA-01" required>
+                            <div class="input-group">
+                                <span class="input-group-text bg-white text-primary"><i class="bi bi-upc-scan"></i></span>
+                                <input type="text" class="form-control border-primary" id="input-busqueda-ajuste" placeholder="Buscar por SKU, Nombre o Código..." autocomplete="off" required>
+                            </div>
+                            <ul class="dropdown-menu w-100 shadow-lg" id="dropdown-resultados-ajuste" style="max-height: 250px; overflow-y: auto; z-index: 1050;">
+                            </ul>
+                            <input type="hidden" id="ajuste-sku" required>
                         </div>
+
+                        <!-- Selector dinámico de Almacén -->
                         <div class="col-md-6">
                             <label class="form-label fw-bold">Almacén <span class="text-danger">*</span></label>
-                            <input type="text" class="form-control text-uppercase" id="ajuste-almacen" value="ALM-CENTRAL" required>
+                            <select class="form-select border-primary" id="ajuste-almacen" required>
+                                <option value="">⏳ Cargando almacenes...</option>
+                            </select>
                         </div>
                     </div>
 
+                    <!-- NUEVA FILA DIVIDIDA EN 3 PARA INCLUIR LA FECHA DE CADUCIDAD -->
                     <div class="row g-3 mb-3">
-                        <div class="col-md-6">
+                        <div class="col-md-4">
                             <label class="form-label fw-bold">Número de Lote</label>
-                            <input type="text" class="form-control text-uppercase" id="ajuste-lote" placeholder="Dejar vacío si no aplica">
-                            <div class="form-text small">Obligatorio solo si el artículo controla lotes.</div>
+                            <input type="text" class="form-control text-uppercase" id="ajuste-lote" placeholder="Vacío si no aplica">
+                            <div class="form-text small">Obligatorio si controla lotes.</div>
                         </div>
-                        <div class="col-md-6">
-                            <label class="form-label fw-bold text-primary">Cantidad Física Encontrada <span class="text-danger">*</span></label>
-                            <input type="number" class="form-control border-primary" id="ajuste-cantidad" min="0" step="0.01" placeholder="¿Cuánto hay realmente?" required>
+                        
+                        <!-- NUEVO CAMPO: Fecha de Caducidad -->
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">Fecha de Caducidad</label>
+                            <input type="date" class="form-control" id="ajuste-caducidad" disabled>
+                            <div class="form-text small text-info" id="msg-caducidad">Ingrese lote para habilitar.</div>
+                        </div>
+
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold text-primary">Cantidad Encontrada <span class="text-danger">*</span></label>
+                            <input type="number" class="form-control border-primary" id="ajuste-cantidad" min="0" step="0.01" placeholder="¿Cuánto hay?" required>
                         </div>
                     </div>
 

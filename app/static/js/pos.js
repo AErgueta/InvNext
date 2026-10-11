@@ -102,81 +102,92 @@ async function inicializarPOS() {
 document.addEventListener('DOMContentLoaded', inicializarPOS);
 
 // --- ACCIÓN: ABRIR CAJA ---
-document.getElementById('btn-abrir-caja').addEventListener('click', async () => {
-    const monto = parseFloat(document.getElementById('input-monto-inicial').value) || 0;
-    
-    try {
-        const token = localStorage.getItem("erp_token");
-        const response = await fetch('/cajas/abrir', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify({
-                caja_id: CONTEXTO_ACTUAL.caja_id,
-                sucursal_id: CONTEXTO_ACTUAL.sucursal_id,
-                monto_inicial: monto
-            })
-        });
+const btnAbrirCaja = document.getElementById('btn-abrir-caja');
+if (btnAbrirCaja) {
+    btnAbrirCaja.addEventListener('click', async (e) => {
+        e.preventDefault(); 
+        
+        const inputMonto = document.getElementById('input-monto-inicial');
+        const monto = inputMonto ? (parseFloat(inputMonto.value) || 0) : 0;
+        
+        try {
+            const token = localStorage.getItem("erp_token");
+            const response = await fetch('/cajas/abrir', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    caja_id: CONTEXTO_ACTUAL.caja_id,
+                    sucursal_id: CONTEXTO_ACTUAL.sucursal_id,
+                    monto_inicial: monto
+                })
+            });
 
-        if (response.ok) {
-            modalApertura.hide();
-            sesionCajaActiva = true;
-            inputBuscador.disabled = false;
-            inputBuscador.focus();
-            reproducirBeep(true);
-        } else {
-            const error = await response.json();
-            alert("Error: " + error.detail);
+            if (response.ok) {
+                modalApertura.hide();
+                sesionCajaActiva = true;
+                inputBuscador.disabled = false;
+                inputBuscador.focus();
+                reproducirBeep(true);
+            } else {
+                const error = await response.json();
+                alert("Error: " + error.detail);
+            }
+        } catch (error) {
+            console.error("Error abriendo caja:", error);
         }
-    } catch (error) {
-        console.error("Error abriendo caja:", error);
-    }
-});
+    });
+}
 
 // --- ACCIÓN: CERRAR CAJA ---
-document.getElementById('btn-procesar-cierre').addEventListener('click', async () => {
-    const montoReal = parseFloat(document.getElementById('input-monto-cierre').value) || 0;
-    const checkConfirmar = document.getElementById('check-confirmar-diferencia').checked;
-    
-    if(!confirm(`¿Declarar Bs. ${montoReal} como tu efectivo final?`)) return;
+const btnProcesarCierre = document.getElementById('btn-procesar-cierre');
+if (btnProcesarCierre) {
+    btnProcesarCierre.addEventListener('click', async (e) => {
+        e.preventDefault(); 
 
-    try {
-        const token = localStorage.getItem("erp_token");
-        const response = await fetch(`/cajas/${CONTEXTO_ACTUAL.caja_id}/cerrar`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify({ 
-                monto_cierre_real: montoReal,
-                confirmar_diferencia: checkConfirmar
-            })
-        });
-
-        const data = await response.json();
+        const montoReal = parseFloat(document.getElementById('input-monto-cierre').value) || 0;
+        const checkConfirmar = document.getElementById('check-confirmar-diferencia').checked;
         
-        if (response.ok) {
-            if (data.requiere_confirmacion) {
-                document.getElementById('alerta-descuadre').classList.remove('d-none');
-                document.getElementById('texto-descuadre').innerText = data.mensaje;
-                document.getElementById('check-confirmar-diferencia').checked = false;
+        if(!confirm(`¿Declarar Bs. ${montoReal} como tu efectivo final?`)) return;
+
+        try {
+            const token = localStorage.getItem("erp_token");
+            const response = await fetch(`/cajas/${CONTEXTO_ACTUAL.caja_id}/cerrar`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ 
+                    monto_cierre_real: montoReal,
+                    confirmar_diferencia: checkConfirmar
+                })
+            });
+
+            const data = await response.json();
+            
+            if (response.ok) {
+                if (data.requiere_confirmacion) {
+                    document.getElementById('alerta-descuadre').classList.remove('d-none');
+                    document.getElementById('texto-descuadre').innerText = data.mensaje;
+                    document.getElementById('check-confirmar-diferencia').checked = false;
+                } else {
+                    modalCierre.hide();
+                    imprimirReporteCierre(data);
+                    setTimeout(() => {
+                        window.location.reload(); 
+                    }, 1500);
+                }
             } else {
-                modalCierre.hide();
-                imprimirReporteCierre(data);
-                setTimeout(() => {
-                    window.location.reload(); 
-                }, 1500);
+                alert("Error: " + data.detail);
             }
-        } else {
-            alert("Error: " + data.detail);
+        } catch (error) {
+            console.error("Error cerrando caja:", error);
         }
-    } catch (error) {
-        console.error("Error cerrando caja:", error);
-    }
-});
+    });
+}
 
 document.getElementById('input-monto-cierre').addEventListener('input', () => {
     document.getElementById('alerta-descuadre').classList.add('d-none');
@@ -507,7 +518,7 @@ btnCobrar.addEventListener('click', async () => {
     const payloadVenta = {
         cliente: document.getElementById('pos-cliente').value,
         documento_cliente: document.getElementById('pos-documento').value,
-        almacen_origen: CONTEXTO_ACTUAL.almacen_id,
+        // ALMACEN_ORIGEN ELIMINADO AQUÍ
         flujo_trabajo_seleccionado: flujoSeleccionado,
         articulos: carrito,
         descuento_global: parseFloat(inputDescuento.value) || 0,
