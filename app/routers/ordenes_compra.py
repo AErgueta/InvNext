@@ -21,7 +21,6 @@ router = APIRouter(
 # --- CLASES DE PETICIÓN (Limpias de usuarios "en duro") ---
 
 class PeticionNuevaOrden(BaseModel):
-    numero_orden: str
     proveedor_id: str
     items: List[ItemOrden]
     notas: Optional[str] = None
@@ -51,16 +50,22 @@ async def crear_orden_compra(
     peticion: PeticionNuevaOrden,
     usuario_actual = Depends(obtener_usuario_actual)
 ):
-    """Crea una nueva Orden de Compra y calcula su total."""
     if not peticion.items:
         raise HTTPException(status_code=400, detail="La orden debe tener al menos un artículo.")
 
-    # Cálculo automático del total financiero
+    # --- NUEVO: AUTOGENERACIÓN DEL NÚMERO DE OC ---
+    fecha_actual = datetime.now(ZoneInfo("America/La_Paz"))
+    prefijo_mes = fecha_actual.strftime("%Y%m") # Ej: 202610
+    
+    # Contamos cuántas órdenes existen para generar el correlativo
+    cantidad_actual = await OrdenCompra.find().count()
+    siguiente_numero = cantidad_actual + 1
+    numero_generado = f"OC-{prefijo_mes}-{str(siguiente_numero).zfill(4)}" # Ej: OC-202610-0001
+
     monto_calculado = sum(item.cantidad_solicitada * item.costo_unitario_estimado for item in peticion.items)
     
-    # Instanciamos el modelo de Base de Datos inyectando al usuario real
     orden = OrdenCompra(
-        numero_orden=peticion.numero_orden,
+        numero_orden=numero_generado, # Asignamos el generado
         proveedor_id=peticion.proveedor_id,
         items=peticion.items,
         notas=peticion.notas,
@@ -71,9 +76,10 @@ async def crear_orden_compra(
     try:
         await orden.insert()
     except Exception:
-        raise HTTPException(status_code=400, detail="Error al crear la orden. Verifica duplicados.")
+        raise HTTPException(status_code=400, detail="Error al crear la orden.")
     
     return orden
+
 
 @router.get("/", response_model=List[OrdenCompra])
 async def listar_ordenes():
@@ -254,3 +260,34 @@ async def registrar_pago(
             "referencia": peticion.referencia
         }
     }
+
+
+
+@router.post("/{numero_orden}/anular", status_code=status.HTTP_200_OK)
+async def anular_orden(
+    numero_orden: str,
+    usuario_actual = Depends(obtener_usuario_actual)
+):
+    """Cancela una Orden de Compra si aún no tiene recepciones procesadas."""
+    orden = await OrdenCompra.find_one(OrdenCompra.numero_orden == numero_orden)
+    if not orden:
+        raise HTTPException(status_code=404, detail="Orden no encontrada.")
+    
+    # Seguro de integridad
+    if orden.estado in [EstadoOrden.COMPLETADA, EstadoOrden.RECEPCION_PARCIAL]:
+        raise HTTPException(
+            status_code=400, 
+            detail="No se puede anular una orden que ya tiene artículos recibidos en almacén."
+        )
+        
+    if orden.estado == EstadoOrden.CANCELADA:
+        raise HTTPException(status_code=400, detail="La orden ya se encuentra anulada.")
+
+    orden.estado = EstadoOrden.CANCELADA
+    orden.fecha_actualizacion = datetime.now(ZoneInfo("America/La_Paz"))
+    # Podríamos registrar quién la anuló si tuviéramos un campo 'usuario_anulacion', 
+    # pero usamos la fecha de actualización como marca de auditoría.
+    
+    await orden.save()
+
+    return {"mensaje": f"Orden {numero_orden} anulada con éxito."}

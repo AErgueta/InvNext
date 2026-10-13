@@ -1,0 +1,87 @@
+{% extends "layouts/main.hbs" %}
+
+{% block contenido %}
+<div class="row mb-4">
+    <div class="col">
+        <h2 class="text-primary"><i class="bi bi-truck"></i> Gestión de Proveedores</h2>
+        <p class="text-muted">Administra el catálogo de proveedores para tus órdenes de compra.</p>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Panel Izquierdo: Formulario -->
+    <div class="col-md-4">
+        <div class="card shadow-sm border-0 mb-4">
+            <div class="card-header bg-white py-3">
+                <h5 class="mb-0 fw-bold">Nuevo Proveedor</h5>
+            </div>
+            <div class="card-body">
+                <form id="form-proveedor">
+                    <!-- Campo oculto para saber si estamos editando -->
+                    <input type="hidden" id="prov-id">
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Razón Social <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control text-uppercase" id="prov-razon" placeholder="Ej. PIL ANDINA S.A." required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">NIT / CI</label>
+                        <input type="text" class="form-control" id="prov-nit" placeholder="Ej. 1020304050">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Contacto Principal</label>
+                        <input type="text" class="form-control text-capitalize" id="prov-contacto" placeholder="Nombre del vendedor">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Teléfono</label>
+                        <input type="text" class="form-control" id="prov-telefono">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Email</label>
+                        <input type="email" class="form-control" id="prov-email">
+                    </div>
+                    
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary w-100 fw-bold" id="btn-guardar-prov">
+                            💾 Guardar
+                        </button>
+                        <button type="button" class="btn btn-secondary w-100 fw-bold d-none" id="btn-cancelar-edicion" onclick="cancelarEdicion()">
+                            ❌ Cancelar
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Panel Derecho: Lista -->
+    <div class="col-md-8">
+        <div class="card shadow-sm border-0">
+            <div class="card-header bg-white py-3">
+                <h5 class="mb-0 fw-bold">Directorio Activo</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Razón Social</th>
+                                <th>NIT / CI</th>
+                                <th>Contacto</th>
+                                <th>Teléfono</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tabla-proveedores">
+                            <tr><td colspan="4" class="text-center text-muted">Cargando...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/proveedores.js"></script>
+{% endblock %}

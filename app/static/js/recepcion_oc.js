@@ -1,3 +1,5 @@
+let ordenActual = null;
+
 document.addEventListener('DOMContentLoaded', () => {
     // Verificar autenticación
     const token = localStorage.getItem('erp_token');
@@ -7,8 +9,13 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
     }
 
+    // 1. Cargar las órdenes pendientes en el select apenas entramos a la pantalla
+    cargarOrdenesPendientes();
+
+    // 2. Asignar eventos a los botones
     const btnBuscar = document.getElementById('btn-buscar-oc');
     const btnProcesar = document.getElementById('btn-procesar-recepcion');
+    const btnAnular = document.getElementById('btn-anular-oc');
 
     if (btnBuscar) {
         btnBuscar.addEventListener('click', buscarOrdenCompra);
@@ -17,14 +24,60 @@ document.addEventListener('DOMContentLoaded', () => {
     if (btnProcesar) {
         btnProcesar.addEventListener('click', procesarRecepcionMasiva);
     }
+    
+    if (btnAnular) {
+        btnAnular.addEventListener('click', anularOrden);
+    }
 });
 
-let ordenActual = null;
+// --- NUEVA FUNCIÓN: Llenar el Select de Órdenes ---
+async function cargarOrdenesPendientes() {
+    const token = localStorage.getItem('erp_token');
+    const select = document.getElementById('oc-numero-select');
+    
+    try {
+        const response = await fetch('/ordenes-compra/', {
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        if (response.ok) {
+            const ordenes = await response.json();
+            
+            // Filtramos solo las que necesitan ser procesadas
+            const ordenesActivas = ordenes.filter(o => 
+                o.estado === 'PENDIENTE' || o.estado === 'RECEPCION_PARCIAL'
+            );
+            
+            select.innerHTML = '<option value="" disabled selected>Seleccione una Orden...</option>';
+            
+            if (ordenesActivas.length === 0) {
+                select.innerHTML = '<option value="" disabled selected>No hay órdenes pendientes</option>';
+                return;
+            }
+            
+            ordenesActivas.forEach(o => {
+                const texto = `${o.numero_orden} - ${o.estado} (Bs. ${o.monto_total})`;
+                select.innerHTML += `<option value="${o.numero_orden}">${texto}</option>`;
+            });
+        } else {
+             select.innerHTML = '<option value="" disabled selected>Error al cargar órdenes</option>';
+        }
+    } catch (error) {
+        console.error("Error al cargar órdenes:", error);
+        select.innerHTML = '<option value="" disabled selected>Error de conexión</option>';
+    }
+}
 
+// --- FUNCIÓN MODIFICADA: Buscar y Renderizar leyendo del Select ---
 async function buscarOrdenCompra() {
-    const numOrden = document.getElementById('input-busqueda-oc').value.trim().toUpperCase();
+    const select = document.getElementById('oc-numero-select');
+    const numOrden = select.value;
+    
     if (!numOrden) {
-        alert("Por favor, ingrese un número de Orden de Compra.");
+        alert("Por favor, seleccione una Orden de Compra del listado.");
         return;
     }
 
@@ -42,12 +95,12 @@ async function buscarOrdenCompra() {
         if (!response.ok) throw new Error("Error al obtener las órdenes de compra.");
 
         const ordenes = await response.json();
-        // Buscamos la orden correspondiente
-        ordenActual = ordenes.find(o => o.numero_orden.toUpperCase() === numOrden);
+        ordenActual = ordenes.find(o => o.numero_orden === numOrden);
 
         if (!ordenActual) {
             alert(`No se encontró la Orden de Compra '${numOrden}'.`);
             document.getElementById('contenedor-recepcion').classList.add('d-none');
+            document.getElementById('btn-anular-oc').classList.add('d-none');
             return;
         }
 
@@ -67,9 +120,12 @@ function renderizarDetalleOrden(orden) {
     const tbody = document.getElementById('tabla-items-oc');
     tbody.innerHTML = "";
 
-    orden.items.forEach((item, index) => {
+    orden.items.forEach((item) => {
         const pendiente = item.cantidad_solicitada - item.cantidad_recibida;
         const disabled = pendiente <= 0 ? 'disabled' : '';
+
+        // Usamos costo_unitario_estimado que viene de la orden original
+        const costoUnitario = item.costo_unitario_estimado || 0;
 
         const fila = document.createElement('tr');
         fila.innerHTML = `
@@ -78,7 +134,7 @@ function renderizarDetalleOrden(orden) {
             <td class="text-center text-muted">${item.cantidad_recibida}</td>
             <td class="text-center">
                 <input type="number" class="form-control form-control-sm text-end input-costo" 
-                       data-sku="${item.sku_articulo}" value="${item.costo_unitario || 0}" min="0" step="0.01" ${disabled}>
+                       data-sku="${item.sku_articulo}" value="${costoUnitario}" min="0" step="0.01" ${disabled}>
             </td>
             <td class="text-center">
                 <input type="date" class="form-control form-control-sm input-vencimiento" 
@@ -97,6 +153,9 @@ function renderizarDetalleOrden(orden) {
     });
 
     document.getElementById('contenedor-recepcion').classList.remove('d-none');
+    
+    // Aparece el botón de anular mágicamente
+    document.getElementById('btn-anular-oc').classList.remove('d-none');
 }
 
 function getBadgeClass(estado) {
@@ -108,6 +167,42 @@ function getBadgeClass(estado) {
     }
 }
 
+// --- NUEVA FUNCIÓN: Anular la Orden ---
+async function anularOrden() {
+    const select = document.getElementById('oc-numero-select');
+    const numeroOrden = select.value;
+    
+    if (!numeroOrden) return;
+    
+    const confirmacion = confirm(`¿Estás completamente seguro de que deseas ANULAR la orden ${numeroOrden}? Esta acción no se puede deshacer.`);
+    if (!confirmacion) return;
+    
+    const token = localStorage.getItem('erp_token');
+    const btnAnular = document.getElementById('btn-anular-oc');
+    btnAnular.disabled = true;
+    
+    try {
+        const response = await fetch(`/ordenes-compra/${numeroOrden}/anular`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            alert(`✅ ${data.mensaje}`);
+            window.location.reload(); // Recarga la página para refrescar el combo
+        } else {
+            alert(`❌ Error: ${data.detail}`);
+        }
+    } catch (error) {
+        alert("Error de conexión con el servidor.");
+    } finally {
+        btnAnular.disabled = false;
+    }
+}
+
+// --- FUNCIÓN MODIFICADA: Procesar Recepción Masiva ---
 async function procesarRecepcionMasiva() {
     if (!ordenActual) return;
 
@@ -140,34 +235,24 @@ async function procesarRecepcionMasiva() {
         }
 
         if (cant > 0) {
-            // Buscamos los valores de costo y vencimiento usando el SKU como ancla
             const inputCosto = document.querySelector(`.input-costo[data-sku="${sku}"]`);
             const inputVencimiento = document.querySelector(`.input-vencimiento[data-sku="${sku}"]`);
             
             const costo = parseFloat(inputCosto.value) || 0;
             const vencimiento = inputVencimiento.value;
 
-            if (!vencimiento) {
-                alert(`Debe ingresar la fecha de vencimiento para el SKU ${sku}.`);
-                errorValidacion = true;
-                return;
-            }
-
             itemsARecibir.push({
                 sku_articulo: sku,
                 cantidad_a_recibir: cant,
                 costo_unitario: costo,
-                fecha_vencimiento: vencimiento
+                // Permitimos enviar null si el campo está vacío (ideal para artículos sin lote como la Escoba)
+                fecha_vencimiento: vencimiento || null
             });
         }
     });
 
     if (errorValidacion) return;
 
-    if (itemsARecibir.length === 0) {
-        alert("Debe ingresar al menos una cantidad mayor a 0 para procesar la recepción.");
-        return;
-    }
     if (itemsARecibir.length === 0) {
         alert("Debe ingresar al menos una cantidad mayor a 0 para procesar la recepción.");
         return;
@@ -199,8 +284,7 @@ async function procesarRecepcionMasiva() {
 
         if (response.ok) {
             alert(`✅ ${data.mensaje}\nMovimientos de entrada generados: ${data.movimientos_creados}`);
-            // Volver a consultar la orden para refrescar las cantidades recibidas
-            buscarOrdenCompra();
+            window.location.reload(); 
         } else {
             alert(`❌ Error: ${data.detail || 'No se pudo procesar la recepción.'}`);
         }

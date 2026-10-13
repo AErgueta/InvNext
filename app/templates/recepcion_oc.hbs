@@ -4,7 +4,7 @@
 <div class="row mb-4">
     <div class="col">
         <h2 class="text-primary"><i class="bi bi-truck"></i> Recepción de Orden de Compra</h2>
-        <p class="text-muted">Ingresa el número de orden para procesar la entrada masiva de artículos.</p>
+        <p class="text-muted">Selecciona una orden pendiente para procesar la entrada masiva de artículos.</p>
     </div>
 </div>
 
@@ -12,12 +12,24 @@
 <div class="card shadow-sm border-0 mb-4">
     <div class="card-body">
         <div class="row g-3 align-items-end">
-            <div class="col-md-4">
-                <label class="form-label fw-bold">Número de OC</label>
-                <input type="text" class="form-control text-uppercase" id="input-busqueda-oc" placeholder="Ej. OC-2026-001">
+            <!-- Select en lugar de Input -->
+            <div class="col-md-6">
+                <label class="form-label fw-bold">Seleccionar Orden Pendiente <span class="text-danger">*</span></label>
+                <select class="form-select text-uppercase py-2" id="oc-numero-select">
+                    <option value="" disabled selected>Cargando órdenes...</option>
+                </select>
             </div>
-            <div class="col-md-2">
-                <button class="btn btn-primary w-100" id="btn-buscar-oc">Buscar Orden</button>
+            
+            <!-- Botones de Acción -->
+            <div class="col-md-3">
+                <button class="btn btn-primary w-100 py-2 fw-bold" id="btn-buscar-oc">
+                    <i class="bi bi-search"></i> Cargar Orden
+                </button>
+            </div>
+            <div class="col-md-3">
+                <button class="btn btn-outline-danger w-100 py-2 fw-bold d-none" id="btn-anular-oc" title="Anular esta orden">
+                    <i class="bi bi-x-octagon-fill"></i> Anular Orden
+                </button>
             </div>
         </div>
     </div>

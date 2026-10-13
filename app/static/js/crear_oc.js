@@ -95,12 +95,11 @@ window.eliminarItem = function(index) {
 }
 
 async function procesarNuevaOrden() {
-    const numeroOrden = document.getElementById('oc-numero').value.trim().toUpperCase();
     const proveedorId = document.getElementById('oc-proveedor').value.trim().toUpperCase();
     const notas = document.getElementById('oc-notas').value.trim();
 
-    if (!numeroOrden || !proveedorId) {
-        alert("El número de orden y el proveedor son obligatorios.");
+    if (!proveedorId) {
+        alert("El proveedor es obligatorio.");
         return;
     }
 
@@ -109,14 +108,13 @@ async function procesarNuevaOrden() {
         return;
     }
 
-    // Construimos el paquete de datos idéntico a PeticionNuevaOrden en Pydantic
+    // Ya no enviamos numero_orden
     const payload = {
-        numero_orden: numeroOrden,
         proveedor_id: proveedorId,
         items: carritoItems,
         notas: notas || null
     };
-
+    
     const btnGuardar = document.getElementById('btn-guardar-oc');
     btnGuardar.disabled = true;
     btnGuardar.innerHTML = 'Procesando...';

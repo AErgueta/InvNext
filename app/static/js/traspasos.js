@@ -10,14 +10,15 @@ const inputBuscador = document.getElementById('traspaso-buscador');
 const dropdownResultados = document.getElementById('dropdown-resultados-traspaso');
 const tbodyCarrito = document.getElementById('traspaso-carrito-body');
 
-const selectOrigen = document.getElementById('traspaso-origen'); 
-const selectDestino = document.getElementById('traspaso-destino');
-const selectFlujo = document.getElementById('traspaso-flujo');
+// Selectores mejorados (soportan múltiples IDs por si cambian en el HTML)
+const selectOrigen = document.getElementById('traspaso-origen') || document.getElementById('almacen-origen'); 
+const selectDestino = document.getElementById('traspaso-destino') || document.getElementById('almacen-destino');
+const selectFlujo = document.getElementById('traspaso-flujo') || document.getElementById('flujo-trabajo');
 const inputNotas = document.getElementById('traspaso-notas');
 const checkDirecto = document.getElementById('traspaso-directo');
 const btnEnviar = document.getElementById('btn-enviar-traspaso');
 
-const modalRecepcion = new bootstrap.Modal(document.getElementById('modalRecepcion'));
+const modalRecepcion = document.getElementById('modalRecepcion') ? new bootstrap.Modal(document.getElementById('modalRecepcion')) : null;
 const inputFolioOculto = document.getElementById('recepcion-folio-oculto');
 const selectFlujoRecepcion = document.getElementById('recepcion-flujo');
 const btnConfirmarRecepcion = document.getElementById('btn-confirmar-recepcion');
@@ -52,7 +53,7 @@ async function inicializarModulo() {
 }
 
 // ==========================================
-// CARGA DINÁMICA DE ALMACENES
+// CARGA DINÁMICA DE ALMACENES (CORREGIDA)
 // ==========================================
 async function cargarAlmacenes() {
     try {
@@ -62,20 +63,25 @@ async function cargarAlmacenes() {
         if (!res.ok) throw new Error("Error HTTP " + res.status);
         const almacenes = await res.json();
         
-        let opcionesHTML = '<option value="">Seleccione un almacén...</option>';
+        let opcionesHTML = '<option value="" disabled selected>Seleccione un almacén...</option>';
+        
         almacenes.forEach(a => {
-            const codigo = a.codigo || a.id; 
-            const nombre = a.nombre || codigo;
-            opcionesHTML += `<option value="${codigo}">${nombre}</option>`;
+            // Buscamos dinámicamente cómo se llama el identificador en tu BD
+            const idAlmacen = a.codigo_almacen || a.codigo || a._id || a.id; 
+            // Buscamos dinámicamente cómo se llama el nombre
+            const nombreAlmacen = a.nombre_almacen || a.nombre || a.descripcion || idAlmacen;
+            
+            opcionesHTML += `<option value="${idAlmacen}">${nombreAlmacen} (${idAlmacen})</option>`;
         });
 
         if (selectOrigen) selectOrigen.innerHTML = opcionesHTML;
         if (selectDestino) selectDestino.innerHTML = opcionesHTML;
 
+        // Lógica de permisos de usuario
         if (CONTEXTO_USUARIO.rol === 'ADMIN') {
             if (selectOrigen) selectOrigen.disabled = false;
         } else {
-            if (selectOrigen) {
+            if (selectOrigen && CONTEXTO_USUARIO.almacen_id) {
                 selectOrigen.value = CONTEXTO_USUARIO.almacen_id;
                 selectOrigen.disabled = true;
             }
@@ -86,6 +92,8 @@ async function cargarAlmacenes() {
 
     } catch (error) {
         console.error("Error cargando almacenes:", error);
+        if (selectOrigen) selectOrigen.innerHTML = '<option value="" disabled>Error al cargar almacenes</option>';
+        if (selectDestino) selectDestino.innerHTML = '<option value="" disabled>Error al cargar almacenes</option>';
     }
 }
 
@@ -139,19 +147,24 @@ if (inputBuscador) {
                     dropdownResultados.innerHTML = '<li><span class="dropdown-item text-muted">No encontrado en el almacén origen</span></li>';
                 } else {
                     resultados.forEach(art => {
+                        const stockDisp = art.stock_en_almacen || 0;
                         const li = document.createElement('li');
                         li.innerHTML = `<a class="dropdown-item py-2" href="#" style="cursor: pointer;">
                             <div class="d-flex justify-content-between align-items-center">
                                 <div><strong>${art.sku}</strong> - ${art.nombre}</div>
-                                <span class="badge bg-primary rounded-pill">Stock: ${art.stock_en_almacen || 0}</span>
+                                <span class="badge ${stockDisp > 0 ? 'bg-primary' : 'bg-danger'} rounded-pill">Stock: ${stockDisp}</span>
                             </div>
                         </a>`;
                         
                         li.addEventListener('click', (evento) => {
                             evento.preventDefault();
-                            agregarAlCarritoTraspaso(art);
-                            inputBuscador.value = '';
-                            dropdownResultados.classList.remove('show');
+                            if (stockDisp > 0) {
+                                agregarAlCarritoTraspaso(art);
+                                inputBuscador.value = '';
+                                dropdownResultados.classList.remove('show');
+                            } else {
+                                alert("No hay stock disponible de este artículo en el origen.");
+                            }
                         });
                         dropdownResultados.appendChild(li);
                     });
@@ -189,13 +202,15 @@ function actualizarVistaCarrito() {
         tr.innerHTML = `
             <td class="fw-bold">${item.sku_articulo}</td>
             <td>${item.nombre_articulo}</td>
-            <td>
-                <input type="number" class="form-control form-control-sm text-center" 
+            <td style="width: 120px;">
+                <input type="number" class="form-control form-control-sm text-center fw-bold" 
                 value="${item.cantidad}" min="1" max="${item.stock_max}" 
                 onchange="cambiarCantidad('${item.sku_articulo}', this.value)">
             </td>
-            <td class="text-center">
-                <button class="btn btn-sm btn-outline-danger" onclick="quitarDelCarrito('${item.sku_articulo}')"><i class="bi bi-trash"></i></button>
+            <td class="text-center" style="width: 80px;">
+                <button class="btn btn-sm btn-outline-danger" onclick="quitarDelCarrito('${item.sku_articulo}')" title="Quitar">
+                    <i class="bi bi-trash"></i>
+                </button>
             </td>
         `;
         tbodyCarrito.appendChild(tr);
@@ -206,7 +221,10 @@ window.cambiarCantidad = (sku, nuevaCant) => {
     const item = carritoTraspaso.find(i => i.sku_articulo === sku);
     if (item) {
         let cant = parseInt(nuevaCant) || 1;
-        if (cant > item.stock_max) cant = item.stock_max;
+        if (cant > item.stock_max) {
+            cant = item.stock_max;
+            alert(`El stock máximo disponible es ${item.stock_max}`);
+        }
         item.cantidad = cant;
         actualizarVistaCarrito();
     }
@@ -226,16 +244,16 @@ if (btnEnviar) {
 
         if (carritoTraspaso.length === 0) return alert("El carrito está vacío.");
         if (!origenSeleccionado) return alert("Selecciona el almacén origen.");
-        if (!selectDestino.value) return alert("Selecciona el almacén destino.");
-        if (!selectFlujo.value) return alert("Selecciona un flujo de trabajo.");
+        if (!selectDestino || !selectDestino.value) return alert("Selecciona el almacén destino.");
+        if (!selectFlujo || !selectFlujo.value) return alert("Selecciona un flujo de trabajo.");
         if (selectDestino.value === origenSeleccionado) return alert("El destino no puede ser igual al origen.");
 
         const payload = {
             almacen_origen_id: origenSeleccionado,
             almacen_destino_id: selectDestino.value,
             flujo_trabajo_seleccionado: selectFlujo.value,
-            recepcion_automatica: checkDirecto.checked,
-            notas: inputNotas.value,
+            recepcion_automatica: checkDirecto ? checkDirecto.checked : false,
+            notas: inputNotas ? inputNotas.value : "",
             articulos: carritoTraspaso.map(i => ({ sku_articulo: i.sku_articulo, nombre_articulo: i.nombre_articulo, cantidad: i.cantidad }))
         };
 
@@ -255,12 +273,16 @@ if (btnEnviar) {
             const data = await res.json();
             alert(`¡Éxito! Boleta generada: ${data.folio}\nEstado: ${data.estado}`);
             
+            // Limpiar todo después de procesar
             carritoTraspaso = [];
             actualizarVistaCarrito();
             if (inputNotas) inputNotas.value = "";
             if (checkDirecto) checkDirecto.checked = false;
             if (selectDestino) selectDestino.value = "";
             if (selectFlujo) selectFlujo.value = "";
+            
+            // Refrescar pendientes si la pestaña está cargada
+            cargarPendientes();
             
         } catch (error) {
             alert("Error al enviar: " + error.message);
@@ -280,14 +302,17 @@ async function cargarPendientes() {
 
     const destinoBusqueda = CONTEXTO_USUARIO.almacen_id || ""; 
     
-    if (!destinoBusqueda) {
+    if (!destinoBusqueda && CONTEXTO_USUARIO.rol !== 'ADMIN') {
         tbodyPendientes.innerHTML = `<tr><td colspan="5" class="text-center py-4 text-warning fw-bold"><i class="bi bi-exclamation-triangle"></i> Tu usuario no tiene un almacén predeterminado.</td></tr>`;
         return; 
     }
 
     try {
         const token = localStorage.getItem("erp_token");
-        const res = await fetch(`/traspasos/pendientes/${destinoBusqueda}`, {
+        // Si es ADMIN sin almacén fijo, traemos todos los pendientes. Si es operador, filtramos por su destino
+        const urlFetch = destinoBusqueda ? `/traspasos/pendientes/${destinoBusqueda}` : `/traspasos/pendientes/todos`;
+        
+        const res = await fetch(urlFetch, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
         
@@ -301,7 +326,7 @@ async function cargarPendientes() {
         tbodyPendientes.innerHTML = '';
         
         if (enviosPendientes.length === 0) {
-            tbodyPendientes.innerHTML = `<tr><td colspan="5" class="text-center py-4 text-muted">No hay camiones en camino hacia este almacén.</td></tr>`;
+            tbodyPendientes.innerHTML = `<tr><td colspan="5" class="text-center py-4 text-muted">No hay camiones en camino.</td></tr>`;
             return;
         }
 
@@ -310,11 +335,10 @@ async function cargarPendientes() {
             const tr = document.createElement('tr');
             tr.innerHTML = `
                 <td class="fw-bold text-primary">${p.folio}</td>
-                <td><span class="badge bg-secondary">${p.almacen_origen_id}</span></td>
+                <td><span class="badge bg-secondary">${p.almacen_origen_id}</span> <i class="bi bi-arrow-right"></i> <span class="badge bg-info text-dark">${p.almacen_destino_id}</span></td>
                 <td>${new Date(p.fecha_envio).toLocaleString('es-BO')}</td>
                 <td class="text-muted small">${p.articulos.length} Items (${totalArticulos} unid.)</td>
                 <td class="text-end">
-                    <!-- BOTÓN ÚNICO QUE ABRE EL MODAL INTERACTIVO -->
                     <button class="btn btn-success btn-sm fw-bold shadow-sm" onclick="abrirModalRecepcion('${p.folio}')">
                         <i class="bi bi-box-arrow-in-down"></i> VER Y RECIBIR
                     </button>
@@ -368,7 +392,6 @@ window.abrirModalRecepcion = (folio) => {
             `;
         });
 
-        // Evento para deshabilitar inputs si se desmarca "Llegó"
         document.querySelectorAll('.check-llegada').forEach(checkbox => {
             checkbox.addEventListener('change', (e) => {
                 const tr = e.target.closest('tr');
@@ -398,7 +421,6 @@ if (btnConfirmarRecepcion) {
         
         if (!flujo) return alert("Por favor selecciona un Flujo de Ingreso para continuar.");
 
-        // Recolectar datos interactivos de la tabla
         const articulosRecibidos = [];
         let discrepanciaDetectada = false;
         
@@ -419,7 +441,6 @@ if (btnConfirmarRecepcion) {
             });
         });
 
-        // Advertencia si hay discrepancias
         if (discrepanciaDetectada) {
             const confirmacion = confirm("ATENCIÓN: Has reportado diferencias entre lo enviado y lo recibido. Esto generará un ajuste de inventario. ¿Estás seguro de continuar?");
             if (!confirmacion) return;

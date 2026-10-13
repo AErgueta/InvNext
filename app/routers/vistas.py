@@ -58,12 +58,7 @@ async def render_dashboard(request: Request):
     )
 
 @router.get("/recepcion-oc")
-async def vista_recepcion_oc(
-    request: Request,
-    # Mantenemos el guardia aquí solo como ejemplo de protección estricta a nivel API, 
-    # pero recuerda que para vistas HTML con localStorage, la validación JS es la ideal.
-    admin: Usuario = Depends(obtener_usuario_admin)
-):
+async def vista_recepcion_oc(request: Request):
     return templates.TemplateResponse(
         request=request, 
         name="recepcion_oc.hbs",
@@ -178,4 +173,14 @@ async def vista_reporte_stock(request: Request):
         request=request, 
         name="reporte_stock.hbs", 
         context={"request": request, "mostrar_menu": True}
+    )
+
+
+@router.get("/proveedores")
+async def vista_proveedores(request: Request):
+    """Renderiza el gestor de proveedores."""
+    return templates.TemplateResponse(
+        request=request, 
+        name="proveedores.hbs",
+        context={"mostrar_menu": True}
     )
