@@ -14,7 +14,7 @@ from app.models.lote import Lote
 from app.models.articulo import Articulo
 from app.models.cuenta_corriente import CuentaCorriente, TipoTransaccionCxC
 from app.models.cliente import Cliente
-from app.models.caja import Caja  # <-- NUEVO: Importamos el modelo Caja
+from app.models.caja import Caja  
 
 router = APIRouter(
     prefix="/ventas",
@@ -27,7 +27,6 @@ router = APIRouter(
 class NuevaVentaRequest(BaseModel):
     cliente: str
     documento_cliente: Optional[str] = None
-    # almacen_origen: str  <-- ELIMINADO: El backend lo descubrirá solo
     flujo_trabajo_seleccionado: str 
     articulos: List[DetalleVenta]
     descuento_global: float = 0.0
@@ -57,7 +56,7 @@ async def registrar_venta(
     Recibe un carrito de compras, valida las matemáticas, genera el documento de Venta
     y dispara los movimientos de salida en estado PENDIENTE.
     """
-    # 0. NUEVO: VALIDACIÓN DE CAJA Y ALMACÉN
+    # 0. VALIDACIÓN DE CAJA Y ALMACÉN
     caja_origen = await Caja.find_one(Caja.codigo == request.caja_id, Caja.codigo_sucursal == request.sucursal_id)
     if not caja_origen:
         raise HTTPException(status_code=404, detail="La caja especificada no existe en esta sucursal.")
@@ -123,7 +122,7 @@ async def registrar_venta(
     for art in request.articulos:
         nuevo_movimiento = Movimiento(
             sku_articulo=art.sku_articulo,
-            codigo_almacen=almacen_despacho, # <-- NUEVO: Usa el almacén asignado a la caja
+            codigo_almacen=almacen_despacho, 
             numero_lote="LOTE-POR-ASIGNAR", 
             usuario=usuario_actual.username, 
             tipo_movimiento=TipoMovimiento.SALIDA_VENTA,
@@ -163,149 +162,172 @@ async def despachar_venta(
     venta_id: str,
     usuario_actual = Depends(obtener_usuario_actual)
 ):
-    """
-    Despacha la mercadería usando lógica FIFO.
-    Búsqueda quirúrgica por IDs y protección de estados financieros.
-    """
     try:
-        id_obj = PydanticObjectId(venta_id)
-    except:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Formato de ID inválido.")
+        print(f"\n--- INICIANDO DESPACHO DE VENTA: {venta_id} ---")
         
-    venta = await Venta.get(id_obj)
-    if not venta:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Venta no encontrada.")
-        
-    if not venta.referencia_movimiento_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, 
-            detail="Esta venta no tiene movimientos logísticos asociados."
-        )
-
-    # 0. BÚSQUEDA INFALIBLE DE MOVIMIENTOS POR ID (Nativo de MongoDB)
-    #----------------------
-    if isinstance(venta.referencia_movimiento_id, list):
-        ids_strings = venta.referencia_movimiento_id
-    else:
-        ids_strings = [id_str.strip() for id_str in venta.referencia_movimiento_id.split(",") if id_str.strip()]
-        
-    ids_objetos = [PydanticObjectId(id_str) for id_str in ids_strings]
-    #----------------------
-
-    movimientos_venta = await Movimiento.find({"_id": {"$in": ids_objetos}}).to_list()
-    
-    if not movimientos_venta:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, 
-            detail=f"Error interno: No se encontraron movimientos físicos en la base de datos para los IDs."
-        )
-    
-    # Filtramos para asegurarnos de no despachar dos veces lo mismo
-    movimientos_pendientes = [mov for mov in movimientos_venta if getattr(mov, "estado", "PENDIENTE") != "EJECUTADO"]
-    
-    if not movimientos_pendientes:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, 
-            detail="¡La mercadería de esta venta YA FUE DESPACHADA anteriormente! (Sus movimientos están en estado EJECUTADO)."
-        )
-
-    # 1. PREPARACIÓN EN MEMORIA (Lógica FIFO Logística)
-    lotes_a_guardar = []
-    articulos_a_guardar = []
-    
-    for mov in movimientos_pendientes:
-        articulo = await Articulo.find_one(Articulo.sku == mov.sku_articulo)
-        if not articulo:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Artículo {mov.sku_articulo} no encontrado.")
+        # --- FUNCIONES ESCUDO (Para manejar tanto Diccionarios como Objetos) ---
+        def get_codigo(item):
+            if isinstance(item, dict): return str(item.get("codigo_almacen", "")).strip()
+            return str(getattr(item, "codigo_almacen", "")).strip()
             
-        lotes_disponibles = await Lote.find(
-            Lote.sku_articulo == mov.sku_articulo,
-            Lote.cantidad_actual > 0
-        ).sort("+fecha_vencimiento").to_list()
-        
-        cantidad_restante = mov.cantidad
-        lotes_utilizados = []
-        costo_total_lotes = 0.0  # <--- 1. NUEVO: Variable para acumular el valor financiero
-        
-        for lote in lotes_disponibles:
-            if cantidad_restante <= 0:
-                break
-                
-            stock_lote_alm = next((sl for sl in lote.stock_por_almacen if sl.codigo_almacen == mov.codigo_almacen), None)
+        def get_cantidad(item):
+            if isinstance(item, dict): return float(item.get("cantidad", 0.0))
+            return float(getattr(item, "cantidad", 0.0))
+
+        def set_cantidad(item, valor):
+            if isinstance(item, dict): item["cantidad"] = float(valor)
+            else: item.cantidad = float(valor)
+        # ------------------------------------------------------------------------
+
+        try:
+            id_obj = PydanticObjectId(venta_id)
+        except Exception as e:
+            print(f"Error en ID: {e}")
+            raise HTTPException(status_code=400, detail="Formato de ID inválido.")
             
-            if stock_lote_alm and stock_lote_alm.cantidad > 0:
-                cantidad_a_tomar = min(stock_lote_alm.cantidad, cantidad_restante)
+        venta = await Venta.get(id_obj)
+        if not venta:
+            raise HTTPException(status_code=404, detail="Venta no encontrada.")
+            
+        if not venta.referencia_movimiento_id:
+            raise HTTPException(status_code=400, detail="Venta sin movimientos logísticos.")
+
+        # 0. BÚSQUEDA SEGURA DE MOVIMIENTOS
+        if isinstance(venta.referencia_movimiento_id, list):
+            ids_strings = venta.referencia_movimiento_id
+        else:
+            ids_strings = [str(i).strip() for i in str(venta.referencia_movimiento_id).split(",") if str(i).strip()]
+            
+        ids_objetos = [PydanticObjectId(i) for i in ids_strings]
+
+        from beanie.operators import In
+        movimientos_venta = await Movimiento.find(In(Movimiento.id, ids_objetos)).to_list()
+        
+        if not movimientos_venta:
+            print(f"No se encontraron movimientos para los IDs: {ids_objetos}")
+            raise HTTPException(status_code=400, detail="Error interno: Movimientos no encontrados.")
+        
+        movimientos_pendientes = [mov for mov in movimientos_venta if getattr(mov, "estado", "PENDIENTE") != "EJECUTADO"]
+        if not movimientos_pendientes:
+            raise HTTPException(status_code=400, detail="¡Mercadería ya despachada anteriormente!")
+
+        lotes_a_guardar = []
+        articulos_a_guardar = []
+        
+        # 1. PREPARACIÓN LOGÍSTICA
+        for mov in movimientos_pendientes:
+            print(f"-> Procesando {mov.sku_articulo} | Cantidad: {mov.cantidad} | Almacén: {mov.codigo_almacen}")
+            
+            articulo = await Articulo.find_one(Articulo.sku == mov.sku_articulo)
+            if not articulo:
+                raise HTTPException(status_code=404, detail=f"Artículo {mov.sku_articulo} no encontrado.")
                 
-                # <--- 2. NUEVO: Acumulamos el costo de las piezas que estamos sacando de este lote específico
-                costo_total_lotes += cantidad_a_tomar * lote.costo_unitario 
+            cantidad_restante = float(mov.cantidad)
+            costo_total = 0.0
+            almacen_buscado = str(mov.codigo_almacen).strip()
+            
+            if getattr(articulo, 'controla_lotes', True):
+                print(f"   Buscando lotes FEFO para {mov.sku_articulo}...")
                 
-                lote.cantidad_actual -= cantidad_a_tomar
-                stock_lote_alm.cantidad -= cantidad_a_tomar
-                lotes_a_guardar.append(lote)
+                from zoneinfo import ZoneInfo
+                from datetime import datetime
                 
-                lotes_utilizados.append(lote.numero_lote)
-                cantidad_restante -= cantidad_a_tomar
+                todos_lotes = await Lote.find(Lote.sku_articulo == mov.sku_articulo).to_list()
+                lotes_disponibles = [l for l in todos_lotes if float(getattr(l, "cantidad_actual", 0)) > 0]
+                lotes_disponibles.sort(key=lambda x: x.fecha_vencimiento if getattr(x, "fecha_vencimiento", None) else datetime.max.replace(tzinfo=ZoneInfo("America/La_Paz")))
                 
-        if cantidad_restante > 0:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST, 
-                detail=f"Inventario insuficiente para el SKU {mov.sku_articulo}. Faltan {cantidad_restante} unidades en el almacén {mov.codigo_almacen}."
+                print(f"   Lotes vigentes encontrados: {len(lotes_disponibles)}")
+                lotes_utilizados = []
+                
+                for lote in lotes_disponibles:
+                    if round(cantidad_restante, 4) <= 0: break
+                        
+                    # <-- APLICAMOS LA FUNCIÓN ESCUDO AQUÍ -->
+                    stock_lote_alm = next((sl for sl in lote.stock_por_almacen if get_codigo(sl) == almacen_buscado), None)
+                    
+                    if stock_lote_alm and get_cantidad(stock_lote_alm) > 0:
+                        cantidad_a_tomar = min(get_cantidad(stock_lote_alm), cantidad_restante)
+                        print(f"   [+] Tomando {cantidad_a_tomar} del lote {lote.numero_lote}")
+                        
+                        costo_total += cantidad_a_tomar * float(getattr(lote, 'costo_unitario', 0.0))
+                        
+                        # Actualizamos valores
+                        lote.cantidad_actual = float(lote.cantidad_actual) - cantidad_a_tomar
+                        set_cantidad(stock_lote_alm, get_cantidad(stock_lote_alm) - cantidad_a_tomar)
+                        
+                        if lote not in lotes_a_guardar: lotes_a_guardar.append(lote)
+                        lotes_utilizados.append(lote.numero_lote)
+                        cantidad_restante -= cantidad_a_tomar
+                        
+                mov.numero_lote = ", ".join(lotes_utilizados) if lotes_utilizados else "SIN-LOTE"
+            else:
+                print(f"   Artículo sin lotes. Buscando stock directo...")
+                
+                # <-- APLICAMOS LA FUNCIÓN ESCUDO AQUÍ -->
+                stock_almacen = next((alm for alm in articulo.stock_por_almacen if get_codigo(alm) == almacen_buscado), None)
+                
+                if stock_almacen and get_cantidad(stock_almacen) > 0:
+                    cantidad_a_tomar = min(get_cantidad(stock_almacen), cantidad_restante)
+                    print(f"   [+] Tomando {cantidad_a_tomar} de inventario general.")
+                    costo_total += cantidad_a_tomar * float(getattr(articulo, 'costo_promedio', getattr(articulo, 'costo', 0.0)))
+                    cantidad_restante -= cantidad_a_tomar
+                mov.numero_lote = "N/A"
+                
+            if round(cantidad_restante, 4) > 0:
+                print(f"   [ERROR] Stock insuficiente. Faltan {cantidad_restante} en {mov.codigo_almacen}")
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"Falta stock físico real. No se encontraron {cantidad_restante} unidades de {mov.sku_articulo} en {mov.codigo_almacen}."
+                )
+                
+            # <-- APLICAMOS LA FUNCIÓN ESCUDO PARA RESTAR AL MAESTRO -->
+            stock_almacen = next((alm for alm in articulo.stock_por_almacen if get_codigo(alm) == almacen_buscado), None)
+            if stock_almacen: 
+                set_cantidad(stock_almacen, get_cantidad(stock_almacen) - float(mov.cantidad))
+                
+            articulo.stock_actual = float(getattr(articulo, "stock_actual", 0.0)) - float(mov.cantidad)
+            if articulo not in articulos_a_guardar: articulos_a_guardar.append(articulo)
+            
+            mov.estado = "EJECUTADO"
+            mov.costo_unitario = costo_total / float(mov.cantidad) if float(mov.cantidad) > 0 else 0.0
+
+        # 2. FINANZAS
+        print("-> Registrando finanzas...")
+        cargo_cxc = None
+        if venta.condicion_pago != CondicionPago.CONTADO:
+            cargo_cxc = CuentaCorriente(
+                documento_cliente=venta.documento_cliente or "CF",
+                cliente=venta.cliente,
+                venta_id=str(venta.id),
+                folio_venta=venta.folio,
+                tipo=TipoTransaccionCxC.CARGO,
+                monto=venta.total_venta,
+                concepto=f"Despacho a crédito ({venta.condicion_pago.value})",
+                usuario=usuario_actual.username
             )
-                
-        stock_almacen = next((alm for alm in articulo.stock_por_almacen if alm.codigo_almacen == mov.codigo_almacen), None)
-        if stock_almacen:
-            stock_almacen.cantidad -= mov.cantidad
+            if venta.estado == EstadoVenta.PENDIENTE: venta.estado = EstadoVenta.POR_COBRAR
+        else:
+            if venta.estado == EstadoVenta.PENDIENTE: venta.estado = EstadoVenta.PAGADA
             
-        articulo.stock_actual -= mov.cantidad
-        articulos_a_guardar.append(articulo)
+        await venta.save()
+        for articulo in articulos_a_guardar: await articulo.save()
+        for lote in lotes_a_guardar: await lote.save()
+        for mov in movimientos_pendientes: await mov.save()
+        if cargo_cxc: await cargo_cxc.insert()
+            
+        print("✅ --- VENTA DESPACHADA CON ÉXITO ---")
+        return {
+            "mensaje": f"Mercadería despachada correctamente.",
+            "folio": venta.folio,
+            "estado_actual": venta.estado
+        }
         
-        mov.numero_lote = ", ".join(lotes_utilizados) if lotes_utilizados else "SIN-LOTE"
-        mov.estado = "EJECUTADO"
-        
-        # <--- 3. NUEVO: Asignamos el costo unitario real calculado al movimiento
-        mov.costo_unitario = costo_total_lotes / mov.cantidad
-
-    # 2. PREPARACIÓN FINANCIERA (Cuentas por Cobrar)
-    cargo_cxc = None
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        print(f"❌ ERROR INESPERADO (PYTHON): {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Error inesperado en código: {str(e)}")
     
-    if venta.condicion_pago != CondicionPago.CONTADO:
-        cargo_cxc = CuentaCorriente(
-            documento_cliente=venta.documento_cliente or "CF",
-            cliente=venta.cliente,
-            venta_id=str(venta.id),
-            folio_venta=venta.folio,
-            tipo=TipoTransaccionCxC.CARGO,
-            monto=venta.total_venta,
-            concepto=f"Despacho a crédito ({venta.condicion_pago.value})",
-            usuario=usuario_actual.username
-        )
-        
-        if venta.estado == EstadoVenta.PENDIENTE:
-            venta.estado = EstadoVenta.POR_COBRAR
-    else:
-    # --- NUEVO: Si es AL CONTADO, la venta pasa a pagada ---
-        if venta.estado == EstadoVenta.PENDIENTE:
-            venta.estado = EstadoVenta.PAGADA
-        
-    # 3. ZONA SEGURA: ESCRITURA EN BASE DE DATOS
-    await venta.save()
-    
-    for articulo in articulos_a_guardar:
-        await articulo.save()
-        for lote in lotes_a_guardar:
-            await lote.save()
-    for mov in movimientos_pendientes:
-        await mov.save()
-        
-    if cargo_cxc:
-        await cargo_cxc.insert()
-        
-    return {
-        "mensaje": f"Mercadería despachada correctamente.",
-        "folio": venta.folio,
-        "estado_actual": venta.estado,
-        "cargo_generado_cxc": True if cargo_cxc else False
-    }
 
 # ==========================================
 # ENDPOINT 3: PAGAR / ABONAR (Finanzas Puras)
